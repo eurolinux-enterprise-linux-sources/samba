@@ -1,4 +1,4 @@
-%define main_release 45
+%define main_release 46
 
 %define samba_version 3.6.23
 
@@ -130,6 +130,7 @@ Patch168: samba-3.6.99-winbind_fix_trusted_domain_handling.patch
 Patch169: CVE-2017-2619.patch
 Patch170: CVE-2017-12150-v3-6.patch
 Patch171: CVE-2017-12163.patch
+Patch172: samba-3.6.99-fix_CVE-2017-2619_regression.patch
 
 Patch190: doc-update.patch
 
@@ -413,6 +414,7 @@ cp %{SOURCE11} packaging/Fedora/
 %patch169 -p1 -b .CVE-2017-2619.patch
 %patch170 -p1 -b .CVE-2017-12150-v3-6.patch
 %patch171 -p1 -b .CVE-2017-12163.patch
+%patch172 -p1 -b .samba-3.6.99-fix_CVE-2017-2619_regression.patch
 
 %patch190 -p1 -b .doc-update.patch
 %patch200 -p1 -b .samba-3.6.x-winbind_tevent_poll.patch
@@ -905,6 +907,9 @@ fi
 %endif
 
 %changelog
+* Tue Nov 07 2017 Andreas Schneider <asn@redhat.com> - 3.6.24-46
+- resolves: #1511879 - Fix regression of CVE-2017-2619
+
 * Thu Sep 14 2017 Andreas Schneider <asn@redhat.com> - 3.6.24-45
 - resolves: #1491210 - CVE-2017-2619 CVE-2017-12150 CVE-2017-12163
 
