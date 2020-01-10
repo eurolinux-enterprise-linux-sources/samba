@@ -1,0 +1,81 @@
+From 369c3048f2635c822b5ac0c82a94737aa8bbcea0 Mon Sep 17 00:00:00 2001
+From: Volker Lendecke <vl@samba.org>
+Date: Thu, 2 Mar 2017 15:14:51 +0100
+Subject: [PATCH 328/328] Re-enable token groups fallback
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=12612
+
+Signed-off-by: Volker Lendecke <vl@samba.org>
+Reviewed-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+
+Autobuild-User(master): Ralph Böhme <slow@samba.org>
+Autobuild-Date(master): Mon Mar  6 19:18:31 CET 2017 on sn-devel-144
+
+(backported from commit 6296c32668af60118ae7059772d2f70e58e1f0d1)
+---
+ source3/winbindd/wb_gettoken.c | 29 ++++++++++++++++++++++-------
+ 1 file changed, 22 insertions(+), 7 deletions(-)
+
+diff --git a/source3/winbindd/wb_gettoken.c b/source3/winbindd/wb_gettoken.c
+index 660de7b34c3..e9444e3bc6e 100644
+--- a/source3/winbindd/wb_gettoken.c
++++ b/source3/winbindd/wb_gettoken.c
+@@ -36,6 +36,7 @@ static bool wb_add_rids_to_sids(TALLOC_CTX *mem_ctx,
+ 				int num_rids, uint32_t *rids);
+ 
+ static void wb_gettoken_gotuser(struct tevent_req *subreq);
++static void wb_gettoken_gotgroups(struct tevent_req *subreq);
+ static void wb_gettoken_gotlocalgroups(struct tevent_req *subreq);
+ static void wb_gettoken_gotbuiltins(struct tevent_req *subreq);
+ 
+@@ -68,10 +69,7 @@ static void wb_gettoken_gotuser(struct tevent_req *subreq)
+ 	struct wb_gettoken_state *state = tevent_req_data(
+ 		req, struct wb_gettoken_state);
+         struct dom_sid *sids;
+-	struct winbindd_domain *domain;
+ 	struct wbint_userinfo *info;
+-	uint32_t num_groups;
+-	struct dom_sid *groups;
+ 	NTSTATUS status;
+ 
+ 	status = wb_queryuser_recv(subreq, state, &info);
+@@ -90,11 +88,28 @@ static void wb_gettoken_gotuser(struct tevent_req *subreq)
+ 	sid_copy(&state->sids[0], &info->user_sid);
+ 	sid_copy(&state->sids[1], &info->group_sid);
+ 
+-	status = lookup_usergroups_cached(
+-		state, &info->user_sid, &num_groups, &groups);
++	subreq = wb_lookupusergroups_send(state, state->ev, &info->user_sid);
++	if (tevent_req_nomem(subreq, req)) {
++		return;
++	}
++	tevent_req_set_callback(subreq, wb_gettoken_gotgroups, req);
++}
++
++static void wb_gettoken_gotgroups(struct tevent_req *subreq)
++{
++	struct tevent_req *req = tevent_req_callback_data(
++		subreq, struct tevent_req);
++	struct wb_gettoken_state *state = tevent_req_data(
++		req, struct wb_gettoken_state);
++	int num_groups;
++	struct dom_sid *groups;
++	struct winbindd_domain *domain;
++	struct dom_sid *sids;
++	NTSTATUS status;
++
++	status = wb_lookupusergroups_recv(subreq, state, &num_groups, &groups);
++	TALLOC_FREE(subreq);
+ 	if (!NT_STATUS_IS_OK(status)) {
+-		DEBUG(10, ("lookup_usergroups_cached failed (%s), not doing "
+-			   "supplementary group lookups\n", nt_errstr(status)));
+ 		tevent_req_done(req);
+ 		return;
+ 	}
+-- 
+2.21.0
+

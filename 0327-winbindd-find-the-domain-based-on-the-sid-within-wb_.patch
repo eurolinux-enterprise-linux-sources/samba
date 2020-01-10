@@ -1,0 +1,98 @@
+From 679cf1ecd728593e09f70d6f22a7453b84086ecc Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Mon, 6 Mar 2017 10:30:52 +0100
+Subject: [PATCH 327/328] winbindd: find the domain based on the sid within
+ wb_lookupusergroups_send()
+
+That simplifies the potential caller.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=12612
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Volker Lendecke <vl@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+
+(backported from commit 76d94838049b77555cdf7dad2d15692cb18b4dab)
+---
+ source3/winbindd/wb_lookupusergroups.c       | 11 ++++++++++-
+ source3/winbindd/winbindd_getuserdomgroups.c | 11 +----------
+ source3/winbindd/winbindd_proto.h            |  1 -
+ 3 files changed, 11 insertions(+), 12 deletions(-)
+
+diff --git a/source3/winbindd/wb_lookupusergroups.c b/source3/winbindd/wb_lookupusergroups.c
+index 3607bbc9e20..3608f27dd9b 100644
+--- a/source3/winbindd/wb_lookupusergroups.c
++++ b/source3/winbindd/wb_lookupusergroups.c
+@@ -32,11 +32,11 @@ static void wb_lookupusergroups_done(struct tevent_req *subreq);
+ 
+ struct tevent_req *wb_lookupusergroups_send(TALLOC_CTX *mem_ctx,
+ 					    struct tevent_context *ev,
+-					    struct winbindd_domain *domain,
+ 					    const struct dom_sid *sid)
+ {
+ 	struct tevent_req *req, *subreq;
+ 	struct wb_lookupusergroups_state *state;
++	struct winbindd_domain *domain;
+ 	NTSTATUS status;
+ 
+ 	req = tevent_req_create(mem_ctx, &state,
+@@ -55,6 +55,15 @@ struct tevent_req *wb_lookupusergroups_send(TALLOC_CTX *mem_ctx,
+ 		return tevent_req_post(req, ev);
+ 	}
+ 
++	domain = find_domain_from_sid_noinit(&state->sid);
++	if (domain == NULL) {
++		char buf[DOM_SID_STR_BUFLEN];
++		dom_sid_string_buf(&state->sid, buf, sizeof(buf));
++		DEBUG(1,("could not find domain entry for sid %s\n", buf));
++		tevent_req_nterror(req, NT_STATUS_NO_SUCH_DOMAIN);
++		return tevent_req_post(req, ev);
++	}
++
+ 	subreq = dcerpc_wbint_LookupUserGroups_send(
+ 		state, ev, dom_child_handle(domain), &state->sid, &state->sids);
+ 	if (tevent_req_nomem(subreq, req)) {
+diff --git a/source3/winbindd/winbindd_getuserdomgroups.c b/source3/winbindd/winbindd_getuserdomgroups.c
+index 55094bb99a2..d0c7ac136a0 100644
+--- a/source3/winbindd/winbindd_getuserdomgroups.c
++++ b/source3/winbindd/winbindd_getuserdomgroups.c
+@@ -36,7 +36,6 @@ struct tevent_req *winbindd_getuserdomgroups_send(TALLOC_CTX *mem_ctx,
+ {
+ 	struct tevent_req *req, *subreq;
+ 	struct winbindd_getuserdomgroups_state *state;
+-	struct winbindd_domain *domain;
+ 
+ 	req = tevent_req_create(mem_ctx, &state,
+ 				struct winbindd_getuserdomgroups_state);
+@@ -56,15 +55,7 @@ struct tevent_req *winbindd_getuserdomgroups_send(TALLOC_CTX *mem_ctx,
+ 		return tevent_req_post(req, ev);
+ 	}
+ 
+-	domain = find_domain_from_sid_noinit(&state->sid);
+-	if (domain == NULL) {
+-		DEBUG(1,("could not find domain entry for sid %s\n",
+-			 request->data.sid));
+-		tevent_req_nterror(req, NT_STATUS_NO_SUCH_DOMAIN);
+-		return tevent_req_post(req, ev);
+-	}
+-
+-	subreq = wb_lookupusergroups_send(state, ev, domain, &state->sid);
++	subreq = wb_lookupusergroups_send(state, ev, &state->sid);
+ 	if (tevent_req_nomem(subreq, req)) {
+ 		return tevent_req_post(req, ev);
+ 	}
+diff --git a/source3/winbindd/winbindd_proto.h b/source3/winbindd/winbindd_proto.h
+index 5bd9df0de44..7d2916600c7 100644
+--- a/source3/winbindd/winbindd_proto.h
++++ b/source3/winbindd/winbindd_proto.h
+@@ -609,7 +609,6 @@ NTSTATUS winbindd_getsidaliases_recv(struct tevent_req *req,
+ 				     struct winbindd_response *response);
+ struct tevent_req *wb_lookupusergroups_send(TALLOC_CTX *mem_ctx,
+ 					    struct tevent_context *ev,
+-					    struct winbindd_domain *domain,
+ 					    const struct dom_sid *sid);
+ NTSTATUS wb_lookupusergroups_recv(struct tevent_req *req, TALLOC_CTX *mem_ctx,
+ 				  int *num_sids, struct dom_sid **sids);
+-- 
+2.21.0
+

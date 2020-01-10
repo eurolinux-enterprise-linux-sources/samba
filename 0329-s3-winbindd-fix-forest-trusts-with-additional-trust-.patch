@@ -1,0 +1,48 @@
+From d23377afa3008b2af8684c4b83d01cd2a52a0653 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Thu, 12 Sep 2019 16:39:10 +0200
+Subject: [PATCH 329/329] s3-winbindd: fix forest trusts with additional trust
+ attributes.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=14130
+
+Guenther
+
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Reviewed-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+(backported from commit d78c87e665e23e6470a19a69383ede7137172c26)
+---
+ source3/winbindd/winbindd_ads.c  | 2 +-
+ source3/winbindd/winbindd_util.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/source3/winbindd/winbindd_ads.c b/source3/winbindd/winbindd_ads.c
+index 298e46273b5..d86958c3f61 100644
+--- a/source3/winbindd/winbindd_ads.c
++++ b/source3/winbindd/winbindd_ads.c
+@@ -1380,7 +1380,7 @@ static NTSTATUS trusted_domains(struct winbindd_domain *domain,
+ 		 */
+ 
+ 		if ((trust->trust_attributes
+-		     == NETR_TRUST_ATTRIBUTE_QUARANTINED_DOMAIN) &&
++		     & NETR_TRUST_ATTRIBUTE_QUARANTINED_DOMAIN) &&
+ 		    !domain->primary )
+ 		{
+ 			DEBUG(10,("trusted_domains: Skipping external trusted "
+diff --git a/source3/winbindd/winbindd_util.c b/source3/winbindd/winbindd_util.c
+index a3d976b460e..84fe759ca14 100644
+--- a/source3/winbindd/winbindd_util.c
++++ b/source3/winbindd/winbindd_util.c
+@@ -588,7 +588,7 @@ static void rescan_forest_trusts( void )
+ 
+ 		if ( (flags & NETR_TRUST_FLAG_INBOUND) &&
+ 		     (type == NETR_TRUST_TYPE_UPLEVEL) &&
+-		     (attribs == NETR_TRUST_ATTRIBUTE_FOREST_TRANSITIVE) )
++		     (attribs & NETR_TRUST_ATTRIBUTE_FOREST_TRANSITIVE) )
+ 		{
+ 			/* add the trusted domain if we don't know
+ 			   about it */
+-- 
+2.21.0
+

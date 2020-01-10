@@ -1,4 +1,4 @@
-%define main_release 52
+%define main_release 53
 
 %define samba_version 3.6.23
 
@@ -374,6 +374,9 @@ Patch0323: 0323-source3-winbindd-winbindd_util.c-fix-stackframe-leak.patch
 Patch0324: 0324-s3-winbindd-fix-endless-forest-trust-scan.patch
 Patch0325: 0325-winbind-lookup_usergroups_cached-doesn-t-use-the-dom.patch
 Patch0326: 0326-winbind-Don-t-do-supplementary-group-lookup-manually.patch
+Patch0327: 0327-winbindd-find-the-domain-based-on-the-sid-within-wb_.patch
+Patch0328: 0328-Re-enable-token-groups-fallback.patch
+Patch0329: 0329-s3-winbindd-fix-forest-trusts-with-additional-trust-.patch
 
 Patch500: doc-update.patch
 # This is a backported patch to use epoll on RHEL. We will maintain this
@@ -916,6 +919,9 @@ cp %{SOURCE11} packaging/Fedora/
 %patch0324 -p1
 %patch0325 -p1
 %patch0326 -p1
+%patch0327 -p1
+%patch0328 -p1
+%patch0329 -p1
 
 %patch500 -p1 -b .doc-update.patch
 %patch501 -p1 -b .samba-3.6.x-winbind_tevent_poll.patch
@@ -1404,6 +1410,10 @@ fi
 %endif
 
 %changelog
+* Wed Sep 25 2019 Andreas Schneider <asn@redhat.com> - 3.6.24-53
+- resolves: #1743358 - Fix group lookup
+- resolves: #1754962 - Fix trusted domain enumeration
+
 * Tue Apr 16 2019 Andreas Schneider <asn@redhat.com> - 3.6.24-52
 - resolves: #1638774 - Fix winbind crash in wb_lookupsid_send()
 
