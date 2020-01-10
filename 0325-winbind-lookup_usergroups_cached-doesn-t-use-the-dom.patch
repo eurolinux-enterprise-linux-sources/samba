@@ -1,0 +1,88 @@
+From 71b512c431de620eda6004d1347de2bff22cb4e1 Mon Sep 17 00:00:00 2001
+From: Volker Lendecke <vl@samba.org>
+Date: Fri, 4 Nov 2016 15:33:11 +0100
+Subject: [PATCH 325/326] winbind: lookup_usergroups_cached doesn't use the
+ "domain" parameter
+
+Signed-off-by: Volker Lendecke <vl@samba.org>
+Reviewed-by: Michael Adam <obnox@samba.org>
+---
+ source3/winbindd/wb_lookupusergroups.c | 3 +--
+ source3/winbindd/winbindd_ads.c        | 2 +-
+ source3/winbindd/winbindd_msrpc.c      | 3 +--
+ source3/winbindd/winbindd_proto.h      | 3 +--
+ source3/winbindd/winbindd_util.c       | 3 +--
+ 5 files changed, 5 insertions(+), 9 deletions(-)
+
+diff --git a/source3/winbindd/wb_lookupusergroups.c b/source3/winbindd/wb_lookupusergroups.c
+index 1bb70810172..3607bbc9e20 100644
+--- a/source3/winbindd/wb_lookupusergroups.c
++++ b/source3/winbindd/wb_lookupusergroups.c
+@@ -46,8 +46,7 @@ struct tevent_req *wb_lookupusergroups_send(TALLOC_CTX *mem_ctx,
+ 	}
+ 	sid_copy(&state->sid, sid);
+ 
+-	status = lookup_usergroups_cached(NULL,
+-					  state,
++	status = lookup_usergroups_cached(state,
+ 					  &state->sid,
+ 					  &state->sids.num_sids,
+ 					  &state->sids.sids);
+diff --git a/source3/winbindd/winbindd_ads.c b/source3/winbindd/winbindd_ads.c
+index 781a417634e..298e46273b5 100644
+--- a/source3/winbindd/winbindd_ads.c
++++ b/source3/winbindd/winbindd_ads.c
+@@ -874,7 +874,7 @@ static NTSTATUS lookup_usergroups(struct winbindd_domain *domain,
+ 	DEBUG(3,("ads: lookup_usergroups\n"));
+ 	*p_num_groups = 0;
+ 
+-	status = lookup_usergroups_cached(domain, mem_ctx, sid, 
++	status = lookup_usergroups_cached(mem_ctx, sid,
+ 					  p_num_groups, user_sids);
+ 	if (NT_STATUS_IS_OK(status)) {
+ 		return NT_STATUS_OK;
+diff --git a/source3/winbindd/winbindd_msrpc.c b/source3/winbindd/winbindd_msrpc.c
+index ae8fedc7ace..16b06b865fa 100644
+--- a/source3/winbindd/winbindd_msrpc.c
++++ b/source3/winbindd/winbindd_msrpc.c
+@@ -501,8 +501,7 @@ static NTSTATUS msrpc_lookup_usergroups(struct winbindd_domain *domain,
+ 	}
+ 
+ 	/* Check if we have a cached user_info_3 */
+-	status = lookup_usergroups_cached(domain,
+-					  tmp_ctx,
++	status = lookup_usergroups_cached(tmp_ctx,
+ 					  user_sid,
+ 					  &num_groups,
+ 					  &user_grpsids);
+diff --git a/source3/winbindd/winbindd_proto.h b/source3/winbindd/winbindd_proto.h
+index 585853eac8f..5bd9df0de44 100644
+--- a/source3/winbindd/winbindd_proto.h
++++ b/source3/winbindd/winbindd_proto.h
+@@ -414,8 +414,7 @@ struct winbindd_cli_state *winbindd_client_list(void);
+ void winbindd_add_client(struct winbindd_cli_state *cli);
+ void winbindd_remove_client(struct winbindd_cli_state *cli);
+ int winbindd_num_clients(void);
+-NTSTATUS lookup_usergroups_cached(struct winbindd_domain *domain,
+-				  TALLOC_CTX *mem_ctx,
++NTSTATUS lookup_usergroups_cached(TALLOC_CTX *mem_ctx,
+ 				  const struct dom_sid *user_sid,
+ 				  uint32 *p_num_groups, struct dom_sid **user_sids);
+ 
+diff --git a/source3/winbindd/winbindd_util.c b/source3/winbindd/winbindd_util.c
+index 1326e78171a..a3d976b460e 100644
+--- a/source3/winbindd/winbindd_util.c
++++ b/source3/winbindd/winbindd_util.c
+@@ -1091,8 +1091,7 @@ int winbindd_num_clients(void)
+ 	return _num_clients;
+ }
+ 
+-NTSTATUS lookup_usergroups_cached(struct winbindd_domain *domain,
+-				  TALLOC_CTX *mem_ctx,
++NTSTATUS lookup_usergroups_cached(TALLOC_CTX *mem_ctx,
+ 				  const struct dom_sid *user_sid,
+ 				  uint32_t *p_num_groups, struct dom_sid **user_sids)
+ {
+-- 
+2.20.1
+

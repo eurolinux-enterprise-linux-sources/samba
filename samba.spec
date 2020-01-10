@@ -1,4 +1,4 @@
-%define main_release 51
+%define main_release 52
 
 %define samba_version 3.6.23
 
@@ -372,6 +372,8 @@ Patch0321: 0321-s3-rpc_client-Make-sure-that-the-memory-is-initializ.patch
 Patch0322: 0322-s3-libsmb-Use-talloc-to-avoid-memory-leaks-in-cli_ne.patch
 Patch0323: 0323-source3-winbindd-winbindd_util.c-fix-stackframe-leak.patch
 Patch0324: 0324-s3-winbindd-fix-endless-forest-trust-scan.patch
+Patch0325: 0325-winbind-lookup_usergroups_cached-doesn-t-use-the-dom.patch
+Patch0326: 0326-winbind-Don-t-do-supplementary-group-lookup-manually.patch
 
 Patch500: doc-update.patch
 # This is a backported patch to use epoll on RHEL. We will maintain this
@@ -912,6 +914,8 @@ cp %{SOURCE11} packaging/Fedora/
 %patch0322 -p1
 %patch0323 -p1
 %patch0324 -p1
+%patch0325 -p1
+%patch0326 -p1
 
 %patch500 -p1 -b .doc-update.patch
 %patch501 -p1 -b .samba-3.6.x-winbind_tevent_poll.patch
@@ -1400,6 +1404,9 @@ fi
 %endif
 
 %changelog
+* Tue Apr 16 2019 Andreas Schneider <asn@redhat.com> - 3.6.24-52
+- resolves: #1638774 - Fix winbind crash in wb_lookupsid_send()
+
 * Tue Mar 27 2018 Andreas Schneider <asn@redhat.com> - 3.6.24-51
 - resolves: #1513877 - Fix memory leak in winbind
 
