@@ -1,0 +1,188 @@
+From 21b75266c0450c9156c8e08c1a02b341805e1a47 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Tue, 15 Jul 2014 14:16:56 +0200
+Subject: [PATCH 252/321] s3-rpc_client: return info3 in
+ rpccli_netlogon_password_logon().
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+Pair-Programmed-With: Andreas Schneider <asn@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+---
+ source3/rpc_client/cli_netlogon.c | 100 +++++++++++++++++++++-----------------
+ source3/rpc_client/cli_netlogon.h |   3 +-
+ source3/rpcclient/cmd_netlogon.c  |   3 +-
+ 3 files changed, 60 insertions(+), 46 deletions(-)
+
+diff --git a/source3/rpc_client/cli_netlogon.c b/source3/rpc_client/cli_netlogon.c
+index c69a93332c9..9454226aa3f 100644
+--- a/source3/rpc_client/cli_netlogon.c
++++ b/source3/rpc_client/cli_netlogon.c
+@@ -153,6 +153,53 @@ NTSTATUS rpccli_netlogon_setup_creds(struct rpc_pipe_client *cli,
+ 	return NT_STATUS_OK;
+ }
+ 
++static NTSTATUS map_validation_to_info3(TALLOC_CTX *mem_ctx,
++					uint16_t validation_level,
++					union netr_Validation *validation,
++					struct netr_SamInfo3 **info3_p)
++{
++	struct netr_SamInfo3 *info3;
++	NTSTATUS status;
++
++	if (validation == NULL) {
++		return NT_STATUS_INVALID_PARAMETER;
++	}
++
++	switch (validation_level) {
++	case 3:
++		if (validation->sam3 == NULL) {
++			return NT_STATUS_INVALID_PARAMETER;
++		}
++
++		info3 = talloc_move(mem_ctx, &validation->sam3);
++		break;
++	case 6:
++		if (validation->sam6 == NULL) {
++			return NT_STATUS_INVALID_PARAMETER;
++		}
++
++		info3 = talloc_zero(mem_ctx, struct netr_SamInfo3);
++		if (info3 == NULL) {
++			return NT_STATUS_NO_MEMORY;
++		}
++		status = copy_netr_SamBaseInfo(info3, &validation->sam6->base, &info3->base);
++		if (!NT_STATUS_IS_OK(status)) {
++			TALLOC_FREE(info3);
++			return status;
++		}
++
++		info3->sidcount = validation->sam6->sidcount;
++		info3->sids = talloc_move(info3, &validation->sam6->sids);
++		break;
++	default:
++		return NT_STATUS_BAD_VALIDATION_CLASS;
++	}
++
++	*info3_p = info3;
++
++	return NT_STATUS_OK;
++}
++
+ /* Logon domain user */
+ 
+ NTSTATUS rpccli_netlogon_sam_logon(struct rpc_pipe_client *cli,
+@@ -163,7 +210,8 @@ NTSTATUS rpccli_netlogon_sam_logon(struct rpc_pipe_client *cli,
+ 				   const char *password,
+ 				   const char *workstation,
+ 				   uint16_t validation_level,
+-				   int logon_type)
++				   int logon_type,
++				   struct netr_SamInfo3 **info3)
+ {
+ 	NTSTATUS result = NT_STATUS_UNSUCCESSFUL;
+ 	NTSTATUS status;
+@@ -298,54 +346,18 @@ NTSTATUS rpccli_netlogon_sam_logon(struct rpc_pipe_client *cli,
+ 		return NT_STATUS_ACCESS_DENIED;
+ 	}
+ 
+-	return result;
+-}
+-
+-static NTSTATUS map_validation_to_info3(TALLOC_CTX *mem_ctx,
+-					uint16_t validation_level,
+-					union netr_Validation *validation,
+-					struct netr_SamInfo3 **info3_p)
+-{
+-	struct netr_SamInfo3 *info3;
+-	NTSTATUS status;
+-
+-	if (validation == NULL) {
+-		return NT_STATUS_INVALID_PARAMETER;
++	if (!NT_STATUS_IS_OK(result)) {
++		return result;
+ 	}
+ 
+-	switch (validation_level) {
+-	case 3:
+-		if (validation->sam3 == NULL) {
+-			return NT_STATUS_INVALID_PARAMETER;
+-		}
+-
+-		info3 = talloc_move(mem_ctx, &validation->sam3);
+-		break;
+-	case 6:
+-		if (validation->sam6 == NULL) {
+-			return NT_STATUS_INVALID_PARAMETER;
+-		}
+-
+-		info3 = talloc_zero(mem_ctx, struct netr_SamInfo3);
+-		if (info3 == NULL) {
+-			return NT_STATUS_NO_MEMORY;
+-		}
+-		status = copy_netr_SamBaseInfo(info3, &validation->sam6->base, &info3->base);
+-		if (!NT_STATUS_IS_OK(status)) {
+-			TALLOC_FREE(info3);
+-			return status;
+-		}
++	netlogon_creds_decrypt_samlogon(cli->dc, validation_level, &validation);
+ 
+-		info3->sidcount = validation->sam6->sidcount;
+-		info3->sids = talloc_move(info3, &validation->sam6->sids);
+-		break;
+-	default:
+-		return NT_STATUS_BAD_VALIDATION_CLASS;
++	result = map_validation_to_info3(mem_ctx, validation_level, &validation, info3);
++	if (!NT_STATUS_IS_OK(result)) {
++		return result;
+ 	}
+ 
+-	*info3_p = info3;
+-
+-	return NT_STATUS_OK;
++	return result;
+ }
+ 
+ /**
+diff --git a/source3/rpc_client/cli_netlogon.h b/source3/rpc_client/cli_netlogon.h
+index ad59d5b2039..9c6cbc8989d 100644
+--- a/source3/rpc_client/cli_netlogon.h
++++ b/source3/rpc_client/cli_netlogon.h
+@@ -41,7 +41,8 @@ NTSTATUS rpccli_netlogon_sam_logon(struct rpc_pipe_client *cli,
+ 				   const char *password,
+ 				   const char *workstation,
+ 				   uint16_t validation_level,
+-				   int logon_type);
++				   int logon_type,
++				   struct netr_SamInfo3 **info3);
+ NTSTATUS rpccli_netlogon_sam_network_logon(struct rpc_pipe_client *cli,
+ 					   TALLOC_CTX *mem_ctx,
+ 					   uint32 logon_parameters,
+diff --git a/source3/rpcclient/cmd_netlogon.c b/source3/rpcclient/cmd_netlogon.c
+index 63057ac3689..e2851459487 100644
+--- a/source3/rpcclient/cmd_netlogon.c
++++ b/source3/rpcclient/cmd_netlogon.c
+@@ -724,6 +724,7 @@ static NTSTATUS cmd_netlogon_sam_logon(struct rpc_pipe_client *cli,
+ 	uint16_t validation_level = 3;
+ 	uint32 logon_param = 0;
+ 	const char *workstation = NULL;
++	struct netr_SamInfo3 *info3 = NULL;
+ 
+ 	/* Check arguments */
+ 
+@@ -750,7 +751,7 @@ static NTSTATUS cmd_netlogon_sam_logon(struct rpc_pipe_client *cli,
+ 
+ 	/* Perform the sam logon */
+ 
+-	result = rpccli_netlogon_sam_logon(cli, mem_ctx, logon_param, lp_workgroup(), username, password, workstation, validation_level, logon_type);
++	result = rpccli_netlogon_sam_logon(cli, mem_ctx, logon_param, lp_workgroup(), username, password, workstation, validation_level, logon_type, &info3);
+ 
+ 	if (!NT_STATUS_IS_OK(result))
+ 		goto done;
+-- 
+2.14.3
+

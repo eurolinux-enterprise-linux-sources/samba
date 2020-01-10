@@ -1,0 +1,46 @@
+From c226713f0f47a494ef8df12ed8f2cad191002884 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Thu, 3 Jul 2014 16:17:46 +0200
+Subject: [PATCH 257/321] samlogon_cache: avoid overwriting
+ info3->base.full_name.string.
+
+This field servers as a source for the gecos field. We should not overwrite it
+when a info3 struct from a samlogon network level gets saved in which case this
+field is always NULL.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=10440
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+---
+ source3/libsmb/samlogon_cache.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/source3/libsmb/samlogon_cache.c b/source3/libsmb/samlogon_cache.c
+index 4281965e679..8a3dbd2c7c2 100644
+--- a/source3/libsmb/samlogon_cache.c
++++ b/source3/libsmb/samlogon_cache.c
+@@ -156,6 +156,20 @@ bool netsamlogon_cache_store(const char *username, struct netr_SamInfo3 *info3)
+ 
+ 	/* Prepare data */
+ 
++	if (info3->base.full_name.string == NULL) {
++		struct netr_SamInfo3 *cached_info3;
++		const char *full_name = NULL;
++
++		cached_info3 = netsamlogon_cache_get(tmp_ctx, &user_sid);
++		if (cached_info3 != NULL) {
++			full_name = cached_info3->base.full_name.string;
++		}
++
++		if (full_name != NULL) {
++			info3->base.full_name.string = talloc_strdup(info3, full_name);
++		}
++	}
++
+ 	/* only Samba fills in the username, not sure why NT doesn't */
+ 	/* so we fill it in since winbindd_getpwnam() makes use of it */
+ 
+-- 
+2.14.3
+

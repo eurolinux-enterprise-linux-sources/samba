@@ -1,0 +1,206 @@
+From 258ad7036bd6226b37f9753287f26988d8d68028 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Thu, 2 Jan 2014 11:18:38 +0100
+Subject: [PATCH 052/321] dcerpc.idl: add dcerpc_sec_verification_trailer
+
+See [MS-RPCE] 2.2.2.13 Verification Trailer for details.
+
+Pair-Programmed-With: Gregor Beck <gbeck@sernet.de>
+
+Signed-off-by: Gregor Beck <gbeck@sernet.de>
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit c0dc2fb7e1dadcef35a132040448cb27ff1d5bfa)
+---
+ librpc/idl/dcerpc.idl   | 67 +++++++++++++++++++++++++++++++++++++++++++++++++
+ librpc/ndr/ndr_dcerpc.c | 66 ++++++++++++++++++++++++++++++++++++++++++++++++
+ librpc/wscript_build    |  2 +-
+ source3/Makefile.in     |  3 ++-
+ 4 files changed, 136 insertions(+), 2 deletions(-)
+ create mode 100644 librpc/ndr/ndr_dcerpc.c
+
+diff --git a/librpc/idl/dcerpc.idl b/librpc/idl/dcerpc.idl
+index 89498364081..6c4e4c1675b 100644
+--- a/librpc/idl/dcerpc.idl
++++ b/librpc/idl/dcerpc.idl
+@@ -10,6 +10,8 @@
+ */
+ import "misc.idl";
+ 
++cpp_quote("extern const uint8_t DCERPC_SEC_VT_MAGIC[8];")
++
+ interface dcerpc
+ {
+ 	typedef struct {
+@@ -506,4 +508,69 @@ interface dcerpc
+ 		uint8 serial_low;
+ 		[switch_is(ptype)] dcerpc_payload u;
+ 	} ncadg_packet;
++
++	typedef [bitmap16bit] bitmap {
++		DCERPC_SEC_VT_COMMAND_ENUM  = 0x3FFF,
++		DCERPC_SEC_VT_COMMAND_END   = 0x4000,
++		DCERPC_SEC_VT_MUST_PROCESS  = 0x8000
++	} dcerpc_sec_vt_command;
++
++	typedef [enum16bit] enum {
++		DCERPC_SEC_VT_COMMAND_BITMASK1  = 0x0001,
++		DCERPC_SEC_VT_COMMAND_PCONTEXT  = 0x0002,
++		DCERPC_SEC_VT_COMMAND_HEADER2   = 0x0003
++	} dcerpc_sec_vt_command_enum;
++
++	typedef [bitmap32bit] bitmap {
++		DCERPC_SEC_VT_CLIENT_SUPPORTS_HEADER_SIGNING = 0x00000001
++	} dcerpc_sec_vt_bitmask1;
++
++	typedef struct {
++		ndr_syntax_id abstract_syntax;
++		ndr_syntax_id transfer_syntax;
++	} dcerpc_sec_vt_pcontext;
++
++	typedef struct {
++		dcerpc_pkt_type ptype;  /* Packet type */
++		[value(0)] uint8 reserved1;
++		[value(0)] uint16 reserved2;
++		uint8 drep[4];          /* NDR data representation */
++		uint32 call_id;         /* Call identifier */
++		uint16 context_id;
++		uint16 opnum;
++	} dcerpc_sec_vt_header2;
++
++	typedef [switch_type(dcerpc_sec_vt_command_enum),nodiscriminant] union {
++	[case(DCERPC_SEC_VT_COMMAND_BITMASK1)] dcerpc_sec_vt_bitmask1 bitmask1;
++	[case(DCERPC_SEC_VT_COMMAND_PCONTEXT)] dcerpc_sec_vt_pcontext pcontext;
++	[case(DCERPC_SEC_VT_COMMAND_HEADER2)] dcerpc_sec_vt_header2 header2;
++	[default,flag(NDR_REMAINING)] DATA_BLOB _unknown;
++	} dcerpc_sec_vt_union;
++
++	typedef struct {
++		dcerpc_sec_vt_command command;
++		[switch_is(command & DCERPC_SEC_VT_COMMAND_ENUM)]
++			[subcontext(2),flag(NDR_SUBCONTEXT_NO_UNREAD_BYTES)]
++			dcerpc_sec_vt_union u;
++	} dcerpc_sec_vt;
++
++	typedef [public,nopush,nopull] struct {
++		uint16 count;
++	} dcerpc_sec_vt_count;
++
++	/*
++	 * We assume that the whole verification trailer fits into
++	 * the last 1024 bytes after the stub data.
++	 *
++	 * There're currently only 3 commands defined and each should
++	 * only be used once.
++	 */
++	const uint16 DCERPC_SEC_VT_MAX_SIZE = 1024;
++
++	typedef [public,flag(NDR_PAHEX)] struct {
++		[flag(NDR_ALIGN4)] DATA_BLOB _pad;
++		[value(DCERPC_SEC_VT_MAGIC)] uint8 magic[8];
++		dcerpc_sec_vt_count count;
++		dcerpc_sec_vt commands[count.count];
++	} dcerpc_sec_verification_trailer;
+ }
+diff --git a/librpc/ndr/ndr_dcerpc.c b/librpc/ndr/ndr_dcerpc.c
+new file mode 100644
+index 00000000000..1b4c75c3d91
+--- /dev/null
++++ b/librpc/ndr/ndr_dcerpc.c
+@@ -0,0 +1,66 @@
++/*
++   Unix SMB/CIFS implementation.
++
++   Manually parsed structures found in the DCERPC protocol
++
++   Copyright (C) Stefan Metzmacher 2014
++   Copyright (C) Gregor Beck 2014
++
++   This program is free software; you can redistribute it and/or modify
++   it under the terms of the GNU General Public License as published by
++   the Free Software Foundation; either version 3 of the License, or
++   (at your option) any later version.
++
++   This program is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++   GNU General Public License for more details.
++
++   You should have received a copy of the GNU General Public License
++   along with this program.  If not, see <http://www.gnu.org/licenses/>.
++*/
++
++#include "includes.h"
++#include "librpc/gen_ndr/ndr_dcerpc.h"
++
++#include "librpc/gen_ndr/ndr_misc.h"
++
++const uint8_t DCERPC_SEC_VT_MAGIC[] = {0x8a,0xe3,0x13,0x71,0x02,0xf4,0x36,0x71};
++
++_PUBLIC_ enum ndr_err_code ndr_push_dcerpc_sec_vt_count(struct ndr_push *ndr, int ndr_flags, const struct dcerpc_sec_vt_count *r)
++{
++	NDR_PUSH_CHECK_FLAGS(ndr, ndr_flags);
++	/* nothing */
++	return NDR_ERR_SUCCESS;
++}
++
++_PUBLIC_ enum ndr_err_code ndr_pull_dcerpc_sec_vt_count(struct ndr_pull *ndr, int ndr_flags, struct dcerpc_sec_vt_count *r)
++{
++	uint32_t _saved_ofs = ndr->offset;
++
++	NDR_PULL_CHECK_FLAGS(ndr, ndr_flags);
++
++	if (!(ndr_flags & NDR_SCALARS)) {
++		return NDR_ERR_SUCCESS;
++	}
++
++	r->count = 0;
++
++	while (true) {
++		uint16_t command;
++		uint16_t length;
++
++		NDR_CHECK(ndr_pull_uint16(ndr, NDR_SCALARS, &command));
++		NDR_CHECK(ndr_pull_uint16(ndr, NDR_SCALARS, &length));
++		NDR_CHECK(ndr_pull_advance(ndr, length));
++
++		r->count += 1;
++
++		if (command & DCERPC_SEC_VT_COMMAND_END) {
++			break;
++		}
++	}
++
++	ndr->offset = _saved_ofs;
++	return NDR_ERR_SUCCESS;
++}
+diff --git a/librpc/wscript_build b/librpc/wscript_build
+index ce78cb6767a..1f8e556094d 100644
+--- a/librpc/wscript_build
++++ b/librpc/wscript_build
+@@ -274,7 +274,7 @@ bld.SAMBA_SUBSYSTEM('NDR_COMPRESSION',
+ 	)
+ 
+ bld.SAMBA_SUBSYSTEM('NDR_DCERPC',
+-	source='gen_ndr/ndr_dcerpc.c',
++	source='gen_ndr/ndr_dcerpc.c ndr/ndr_dcerpc.c',
+ 	public_deps='ndr',
+ 	public_headers='gen_ndr/ndr_dcerpc.h gen_ndr/dcerpc.h',
+ 	header_path= [ ('*gen_ndr*', 'gen_ndr') ],
+diff --git a/source3/Makefile.in b/source3/Makefile.in
+index 9e8e03d57a7..4f9cbb4e6d9 100644
+--- a/source3/Makefile.in
++++ b/source3/Makefile.in
+@@ -323,7 +323,8 @@ LIBNDR_OBJ = ../librpc/ndr/ndr_basic.o \
+ 	     ../librpc/ndr/uuid.o \
+ 	     librpc/ndr/util.o \
+ 	     librpc/gen_ndr/ndr_server_id.o \
+-	     librpc/gen_ndr/ndr_dcerpc.o
++	     librpc/gen_ndr/ndr_dcerpc.o \
++	     ../librpc/ndr/ndr_dcerpc.o
+ 
+ LIBNDR_GEN_OBJ0 = librpc/gen_ndr/ndr_samr.o \
+ 		  librpc/gen_ndr/ndr_lsa.o
+-- 
+2.14.3
+

@@ -1,0 +1,209 @@
+From af62ac2732c94b4de72ac2a61055ab06a8f5a2ed Mon Sep 17 00:00:00 2001
+From: Gregor Beck <gbeck@sernet.de>
+Date: Wed, 8 Jan 2014 09:50:33 +0100
+Subject: [PATCH 065/321] librpc/rpc: add
+ dcerpc_sec_verification_trailer_check()
+
+Signed-off-by: Gregor Beck <gbeck@sernet.de>
+Reviewed-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit 1fd484270153ba8d47e95b8961db175d50b8b9cb)
+---
+ librpc/rpc/dcerpc_util.c | 136 +++++++++++++++++++++++++++++++++++++++++++++++
+ librpc/rpc/rpc_common.h  |  18 +++++++
+ librpc/wscript_build     |   1 +
+ 3 files changed, 155 insertions(+)
+
+diff --git a/librpc/rpc/dcerpc_util.c b/librpc/rpc/dcerpc_util.c
+index 3e3616ead27..97ef7981eae 100644
+--- a/librpc/rpc/dcerpc_util.c
++++ b/librpc/rpc/dcerpc_util.c
+@@ -27,6 +27,7 @@
+ #include "librpc/rpc/dcerpc.h"
+ #include "librpc/gen_ndr/ndr_dcerpc.h"
+ #include "rpc_common.h"
++#include "lib/util/bitmap.h"
+ 
+ /* we need to be able to get/set the fragment length without doing a full
+    decode */
+@@ -397,3 +398,138 @@ bool dcerpc_sec_vt_header2_equal(const struct dcerpc_sec_vt_header2 *v1,
+ 
+ 	return true;
+ }
++
++static bool dcerpc_sec_vt_is_valid(const struct dcerpc_sec_verification_trailer *r)
++{
++	bool ret = false;
++	TALLOC_CTX *frame = talloc_stackframe();
++	struct bitmap *commands_seen;
++	int i;
++
++	if (r->count.count == 0) {
++		ret = true;
++		goto done;
++	}
++
++	if (memcmp(r->magic, DCERPC_SEC_VT_MAGIC, sizeof(r->magic)) != 0) {
++		goto done;
++	}
++
++	commands_seen = bitmap_talloc(frame, DCERPC_SEC_VT_COMMAND_ENUM + 1);
++	if (commands_seen == NULL) {
++		goto done;
++	}
++
++	for (i=0; i < r->count.count; i++) {
++		enum dcerpc_sec_vt_command_enum cmd =
++			r->commands[i].command & DCERPC_SEC_VT_COMMAND_ENUM;
++
++		if (bitmap_query(commands_seen, cmd)) {
++			/* Each command must appear at most once. */
++			goto done;
++		}
++		bitmap_set(commands_seen, cmd);
++
++		switch (cmd) {
++		case DCERPC_SEC_VT_COMMAND_BITMASK1:
++		case DCERPC_SEC_VT_COMMAND_PCONTEXT:
++		case DCERPC_SEC_VT_COMMAND_HEADER2:
++			break;
++		default:
++			if ((r->commands[i].u._unknown.length % 4) != 0) {
++				goto done;
++			}
++			break;
++		}
++	}
++	ret = true;
++done:
++	TALLOC_FREE(frame);
++	return ret;
++}
++
++#define CHECK(msg, ok)						\
++do {								\
++	if (!ok) {						\
++		DEBUG(10, ("SEC_VT check %s failed\n", msg));	\
++		return false;					\
++	}							\
++} while(0)
++
++#define CHECK_SYNTAX(msg, s1, s2)					\
++do {								\
++	if (!ndr_syntax_id_equal(&s1, &s2)) {				\
++		TALLOC_CTX *frame = talloc_stackframe();		\
++		DEBUG(10, ("SEC_VT check %s failed: %s vs. %s\n", msg,	\
++			   ndr_syntax_id_to_string(frame, &s1),		\
++			   ndr_syntax_id_to_string(frame, &s1)));	\
++		TALLOC_FREE(frame);					\
++		return false;						\
++	}								\
++} while(0)
++
++
++bool dcerpc_sec_verification_trailer_check(
++		const struct dcerpc_sec_verification_trailer *vt,
++		const uint32_t *bitmask1,
++		const struct dcerpc_sec_vt_pcontext *pcontext,
++		const struct dcerpc_sec_vt_header2 *header2)
++{
++	size_t i;
++
++	if (!dcerpc_sec_vt_is_valid(vt)) {
++		return false;
++	}
++
++	for (i=0; i < vt->count.count; i++) {
++		struct dcerpc_sec_vt *c = &vt->commands[i];
++
++		switch (c->command & DCERPC_SEC_VT_COMMAND_ENUM) {
++		case DCERPC_SEC_VT_COMMAND_BITMASK1:
++			if (bitmask1 == NULL) {
++				CHECK("Bitmask1 must_process_command",
++				      !(c->command & DCERPC_SEC_VT_MUST_PROCESS));
++				break;
++			}
++
++			if (c->u.bitmask1 & DCERPC_SEC_VT_CLIENT_SUPPORTS_HEADER_SIGNING) {
++				CHECK("Bitmask1 client_header_signing",
++				      *bitmask1 & DCERPC_SEC_VT_CLIENT_SUPPORTS_HEADER_SIGNING);
++			}
++			break;
++
++		case DCERPC_SEC_VT_COMMAND_PCONTEXT:
++			if (pcontext == NULL) {
++				CHECK("Pcontext must_process_command",
++				      !(c->command & DCERPC_SEC_VT_MUST_PROCESS));
++				break;
++			}
++
++			CHECK_SYNTAX("Pcontect abstract_syntax",
++				     pcontext->abstract_syntax,
++				     c->u.pcontext.abstract_syntax);
++			CHECK_SYNTAX("Pcontext transfer_syntax",
++				     pcontext->transfer_syntax,
++				     c->u.pcontext.transfer_syntax);
++			break;
++
++		case DCERPC_SEC_VT_COMMAND_HEADER2: {
++			if (header2 == NULL) {
++				CHECK("Header2 must_process_command",
++				      !(c->command & DCERPC_SEC_VT_MUST_PROCESS));
++				break;
++			}
++
++			CHECK("Header2", dcerpc_sec_vt_header2_equal(header2, &c->u.header2));
++			break;
++		}
++
++		default:
++			CHECK("Unknown must_process_command",
++			      !(c->command & DCERPC_SEC_VT_MUST_PROCESS));
++			break;
++		}
++	}
++
++	return true;
++}
+diff --git a/librpc/rpc/rpc_common.h b/librpc/rpc/rpc_common.h
+index 4f9190d0f76..fe8129d9ccf 100644
+--- a/librpc/rpc/rpc_common.h
++++ b/librpc/rpc/rpc_common.h
+@@ -319,4 +319,22 @@ struct dcerpc_sec_vt_header2 dcerpc_sec_vt_header2_from_ncacn_packet(const struc
+ bool dcerpc_sec_vt_header2_equal(const struct dcerpc_sec_vt_header2 *v1,
+ 				 const struct dcerpc_sec_vt_header2 *v2);
+ 
++/**
++ * Check for consistency of the security verification trailer with the PDU header.
++ * See <a href="http://msdn.microsoft.com/en-us/library/cc243559.aspx">MS-RPCE 2.2.2.13</a>.
++ * A check with an empty trailer succeeds.
++ *
++ * @param[in] vt a pointer to the security verification trailer.
++ * @param[in] bitmask1 which flags were negotiated on the connection.
++ * @param[in] pcontext the syntaxes negotiatied for the presentation context.
++ * @param[in] header2 some fields from the PDU header.
++ *
++ * @retval true on success.
++ */
++bool dcerpc_sec_verification_trailer_check(
++		const struct dcerpc_sec_verification_trailer *vt,
++		const uint32_t *bitmask1,
++		const struct dcerpc_sec_vt_pcontext *pcontext,
++		const struct dcerpc_sec_vt_header2 *header2);
++
+ #endif /* __DEFAULT_LIBRPC_RPCCOMMON_H__ */
+diff --git a/librpc/wscript_build b/librpc/wscript_build
+index 1f8e556094d..751d4a3eea9 100644
+--- a/librpc/wscript_build
++++ b/librpc/wscript_build
+@@ -276,6 +276,7 @@ bld.SAMBA_SUBSYSTEM('NDR_COMPRESSION',
+ bld.SAMBA_SUBSYSTEM('NDR_DCERPC',
+ 	source='gen_ndr/ndr_dcerpc.c ndr/ndr_dcerpc.c',
+ 	public_deps='ndr',
++	deps='bitmap',
+ 	public_headers='gen_ndr/ndr_dcerpc.h gen_ndr/dcerpc.h',
+ 	header_path= [ ('*gen_ndr*', 'gen_ndr') ],
+ 	)
+-- 
+2.14.3
+

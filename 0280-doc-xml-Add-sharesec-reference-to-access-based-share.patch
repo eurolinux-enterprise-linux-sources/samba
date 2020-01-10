@@ -1,0 +1,38 @@
+From 20f230ef3d85c4fca656fcec432deee7e29ba5c6 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 2 Mar 2015 11:55:01 +0100
+Subject: [PATCH 280/321] doc-xml: Add 'sharesec' reference to 'access based
+ share enum'
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=11127
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Michael Adam <obnox@samba.org>
+
+Autobuild-User(master): Andreas Schneider <asn@cryptomilk.org>
+Autobuild-Date(master): Mon Mar  2 14:33:33 CET 2015 on sn-devel-104
+
+(cherry picked from commit e2ed224653985afa13e906e2a5f3656a18d622c0)
+---
+ docs-xml/smbdotconf/security/accessbasedshareenum.xml | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/docs-xml/smbdotconf/security/accessbasedshareenum.xml b/docs-xml/smbdotconf/security/accessbasedshareenum.xml
+index 8b94648f64d..66932d0c093 100644
+--- a/docs-xml/smbdotconf/security/accessbasedshareenum.xml
++++ b/docs-xml/smbdotconf/security/accessbasedshareenum.xml
+@@ -7,7 +7,10 @@
+      <para>If this parameter is <constant>yes</constant> for a
+     service, then the share hosted by the service will only be visible
+     to users who have read or write access to the share during share
+-    enumeration (for example net view \\sambaserver).  This has
++    enumeration (for example net view \\sambaserver). The share ACLs
++    which allow or deny the access to the share can be modified using
++    for example the <command moreinfo="none">sharesec</command> command
++    or using the appropriate Windows tools. This has
+     parallels to access based enumeration, the main difference being
+     that only share permissions are evaluated, and security
+     descriptors on files contained on the share are not used in
+-- 
+2.14.3
+

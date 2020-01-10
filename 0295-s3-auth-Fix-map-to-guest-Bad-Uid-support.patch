@@ -1,0 +1,36 @@
+From c575d6dfc21bba9e1281368d73bbd4f035d07c6a Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 19 Aug 2015 16:11:47 +0200
+Subject: [PATCH 295/321] s3-auth: Fix 'map to guest = Bad Uid' support
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=9862
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit 34965d4d98d172e848e2b96fad8a9e0b99288ba7)
+---
+ source3/auth/auth_util.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index ed20a57841d..0e03cc81ae6 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -1273,6 +1273,14 @@ NTSTATUS make_server_info_info3(TALLOC_CTX *mem_ctx,
+ 				  &username_was_mapped);
+ 
+ 	if (!NT_STATUS_IS_OK(nt_status)) {
++		/* Handle 'map to guest = Bad Uid */
++		if (NT_STATUS_EQUAL(nt_status, NT_STATUS_NO_SUCH_USER) &&
++		    (lp_security() == SEC_ADS || lp_security() == SEC_DOMAIN) &&
++		    lp_map_to_guest() == MAP_TO_GUEST_ON_BAD_UID) {
++			DEBUG(2, ("Try to map %s to guest account\n",
++				   nt_username));
++			return make_server_info_guest(mem_ctx, server_info);
++		}
+ 		return nt_status;
+ 	}
+ 
+-- 
+2.14.3
+

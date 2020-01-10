@@ -1,0 +1,32 @@
+From 9bcf40ca7e923249dff149ba7ed71f27274e5bc9 Mon Sep 17 00:00:00 2001
+From: Jeremy Allison <jra@samba.org>
+Date: Mon, 24 Feb 2014 16:18:31 -0800
+Subject: [PATCH 213/321] s3-printing: Fix obvious memory leak in
+ printer_list_get_printer().
+
+https://bugzilla.samba.org/show_bug.cgi?id=9993
+
+Signed-off-by: Jeremy Allison <jra@samba.org>
+Reviewed-by: Ira Cooper <ira@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+
+(cherry picked from commit 148bbdd8d04400b5d873f636671dd443952ca04f)
+---
+ source3/printing/printer_list.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/source3/printing/printer_list.c b/source3/printing/printer_list.c
+index 8f196a51599..603ce4b5323 100644
+--- a/source3/printing/printer_list.c
++++ b/source3/printing/printer_list.c
+@@ -133,6 +133,7 @@ NTSTATUS printer_list_get_printer(TALLOC_CTX *mem_ctx,
+ done:
+ 	SAFE_FREE(nstr);
+ 	SAFE_FREE(cstr);
++	SAFE_FREE(lstr);
+ 	TALLOC_FREE(key);
+ 	return status;
+ }
+-- 
+2.14.3
+

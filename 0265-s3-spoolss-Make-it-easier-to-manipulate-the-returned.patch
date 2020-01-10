@@ -1,0 +1,52 @@
+From 9b4b8c246e0db6cfd0afc8fd4430aa7f6cbd871f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Sat, 19 Jan 2013 01:37:29 +0100
+Subject: [PATCH 265/321] s3-spoolss: Make it easier to manipulate the returned
+ OSVersion at runtime.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+---
+ source3/rpc_server/spoolss/srv_spoolss_nt.c | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/source3/rpc_server/spoolss/srv_spoolss_nt.c b/source3/rpc_server/spoolss/srv_spoolss_nt.c
+index 2f0034cf973..c38a899263f 100644
+--- a/source3/rpc_server/spoolss/srv_spoolss_nt.c
++++ b/source3/rpc_server/spoolss/srv_spoolss_nt.c
+@@ -2365,9 +2365,13 @@ static WERROR getprinterdata_printer_server(TALLOC_CTX *mem_ctx,
+ 		enum ndr_err_code ndr_err;
+ 		struct spoolss_OSVersion os;
+ 
+-		os.major		= 5;	/* Windows 2000 == 5.0 */
+-		os.minor		= 0;
+-		os.build		= 2195;	/* build */
++		os.major		= lp_parm_int(GLOBAL_SECTION_SNUM,
++						      "spoolss", "os_major", 5);
++						      /* Windows 2000 == 5.0 */
++		os.minor		= lp_parm_int(GLOBAL_SECTION_SNUM,
++						      "spoolss", "os_minor", 0);
++		os.build		= lp_parm_int(GLOBAL_SECTION_SNUM,
++						      "spoolss", "os_build", 2195);
+ 		os.extra_string		= "";	/* leave extra string empty */
+ 
+ 		ndr_err = ndr_push_struct_blob(&blob, mem_ctx, &os,
+@@ -2376,6 +2380,10 @@ static WERROR getprinterdata_printer_server(TALLOC_CTX *mem_ctx,
+ 			return WERR_GENERAL_FAILURE;
+ 		}
+ 
++		if (DEBUGLEVEL >= 10) {
++			NDR_PRINT_DEBUG(spoolss_OSVersion, &os);
++		}
++
+ 		*type = REG_BINARY;
+ 		data->binary = blob;
+ 
+-- 
+2.14.3
+

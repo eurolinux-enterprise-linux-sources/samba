@@ -1,0 +1,46 @@
+From 3e672384522c1823d6aa50fce010581b7c620f42 Mon Sep 17 00:00:00 2001
+From: Vadim Zhukov <persgray@gmail.com>
+Date: Sat, 25 May 2013 15:19:24 +0100
+Subject: [PATCH 029/321] pidl: Recent Perl warns about "defined(@var)"
+ constructs.
+
+Signed-off-by: Jelmer Vernooij <jelmer@samba.org>
+
+Autobuild-User(master): Jelmer Vernooij <jelmer@samba.org>
+Autobuild-Date(master): Sat May 25 18:10:53 CEST 2013 on sn-devel-104
+
+(cherry picked from commit 92254d09e0ee5a7d9d0cd91fe1803f54e64d9a5f)
+---
+ pidl/lib/Parse/Pidl/ODL.pm | 2 +-
+ pidl/pidl                  | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/pidl/lib/Parse/Pidl/ODL.pm b/pidl/lib/Parse/Pidl/ODL.pm
+index 74d9ac7c04d..14e77fa93f2 100644
+--- a/pidl/lib/Parse/Pidl/ODL.pm
++++ b/pidl/lib/Parse/Pidl/ODL.pm
+@@ -70,7 +70,7 @@ sub ODL2IDL
+ 					next;
+ 				}
+ 				my $podl = Parse::Pidl::IDL::parse_file($idl_path, $opt_incdirs);
+-				if (defined(@$podl)) {
++				if (defined($podl)) {
+ 					require Parse::Pidl::Typelist;
+ 					my $basename = basename($idl_path, ".idl");
+ 
+diff --git a/pidl/pidl b/pidl/pidl
+index 2a46e92925c..c65092ee9ad 100755
+--- a/pidl/pidl
++++ b/pidl/pidl
+@@ -605,7 +605,7 @@ sub process_file($)
+ 		require Parse::Pidl::IDL;
+ 
+ 		$pidl = Parse::Pidl::IDL::parse_file($idl_file, \@opt_incdirs);
+-		defined @$pidl || die "Failed to parse $idl_file";
++		defined $pidl || die "Failed to parse $idl_file";
+ 	}
+ 
+ 	require Parse::Pidl::Typelist;
+-- 
+2.14.3
+

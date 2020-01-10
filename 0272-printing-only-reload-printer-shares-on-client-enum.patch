@@ -1,0 +1,181 @@
+From 4734141c0b496d57f7315d24c4f0578c86e7509c Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@samba.org>
+Date: Fri, 11 Jul 2014 17:00:05 +0200
+Subject: [PATCH 272/321] printing: only reload printer shares on client enum
+
+Currently, automatic printer share updates are handled in the following
+way:
+- Background printer process (BPP) forked on startup
+- Parent smbd and per-client children await MSG_PRINTER_PCAP messages
+- BPP periodically polls the printing backend for printcap data
+	- printcap data written to printer_list.tdb
+	- MSG_PRINTER_PCAP sent to all smbd processes following update
+- smbd processes all read the latest printer_list.tdb data, and update
+  their share listings
+
+This procedure is not scalable, as all smbd processes hit
+printer_list.tdb in parallel, resulting in a large spike in CPU usage.
+
+This change sees smbd processes only update their printer share lists
+only when a client asks for this information, e.g. via NetShareEnum or
+EnumPrinters.
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=10652
+
+Suggested-by: Volker Lendecke <vl@samba.org>
+Signed-off-by: David Disseldorp <ddiss@samba.org>
+---
+ source3/printing/spoolssd.c                 | 17 +----------------
+ source3/rpc_server/spoolss/srv_spoolss_nt.c | 11 ++++++++++-
+ source3/rpc_server/srvsvc/srv_srvsvc_nt.c   |  1 +
+ source3/smbd/lanman.c                       |  3 +++
+ source3/smbd/server.c                       | 27 +++++----------------------
+ 5 files changed, 20 insertions(+), 39 deletions(-)
+
+diff --git a/source3/printing/spoolssd.c b/source3/printing/spoolssd.c
+index 83727dffda4..7953237fc33 100644
+--- a/source3/printing/spoolssd.c
++++ b/source3/printing/spoolssd.c
+@@ -74,20 +74,6 @@ static void smb_conf_updated(struct messaging_context *msg,
+ 	spoolss_reopen_logs();
+ }
+ 
+-static void spoolss_pcap_updated(struct messaging_context *msg,
+-				 void *private_data,
+-				 uint32_t msg_type,
+-				 struct server_id server_id,
+-				 DATA_BLOB *data)
+-{
+-	struct tevent_context *ev_ctx = talloc_get_type_abort(private_data,
+-							     struct tevent_context);
+-
+-	DEBUG(10, ("Got message saying pcap was updated. Reloading.\n"));
+-	change_to_root_user();
+-	reload_printers(ev_ctx, msg);
+-}
+-
+ static void spoolss_sig_term_handler(struct tevent_context *ev,
+ 				     struct tevent_signal *se,
+ 				     int signum,
+@@ -206,12 +192,11 @@ void start_spoolssd(struct tevent_context *ev_ctx,
+ 		exit(1);
+ 	}
+ 
++	/* printer shares updated from printer_list.tdb on client enumeration */
+ 	messaging_register(msg_ctx, NULL,
+ 			   MSG_PRINTER_UPDATE, print_queue_receive);
+ 	messaging_register(msg_ctx, ev_ctx,
+ 			   MSG_SMB_CONF_UPDATED, smb_conf_updated);
+-	messaging_register(msg_ctx, ev_ctx,
+-			   MSG_PRINTER_PCAP, spoolss_pcap_updated);
+ 
+ 	/*
+ 	 * Initialize spoolss with an init function to convert printers first.
+diff --git a/source3/rpc_server/spoolss/srv_spoolss_nt.c b/source3/rpc_server/spoolss/srv_spoolss_nt.c
+index 3ee4702b9b0..d5d614647c8 100644
+--- a/source3/rpc_server/spoolss/srv_spoolss_nt.c
++++ b/source3/rpc_server/spoolss/srv_spoolss_nt.c
+@@ -4329,12 +4329,21 @@ static WERROR enum_all_printers_info_level(TALLOC_CTX *mem_ctx,
+ 					   uint32_t *count_p)
+ {
+ 	int snum;
+-	int n_services = lp_numservices();
++	int n_services;
+ 	union spoolss_PrinterInfo *info = NULL;
+ 	uint32_t count = 0;
+ 	WERROR result = WERR_OK;
+ 	struct dcerpc_binding_handle *b = NULL;
+ 
++	/*
++	 * printer shares are only updated on client enumeration. The background
++	 * printer process updates printer_list.tdb at regular intervals.
++	 */
++	become_root();
++	reload_printers(messaging_event_context(msg_ctx), msg_ctx);
++	unbecome_root();
++
++	n_services = lp_numservices();
+ 	*count_p = 0;
+ 	*info_p = NULL;
+ 
+diff --git a/source3/rpc_server/srvsvc/srv_srvsvc_nt.c b/source3/rpc_server/srvsvc/srv_srvsvc_nt.c
+index 71fd0e2fcfa..eee0eb4fa3a 100644
+--- a/source3/rpc_server/srvsvc/srv_srvsvc_nt.c
++++ b/source3/rpc_server/srvsvc/srv_srvsvc_nt.c
+@@ -568,6 +568,7 @@ static WERROR init_srv_share_info_ctr(struct pipes_struct *p,
+ 
+ 	/* Ensure all the usershares are loaded. */
+ 	become_root();
++	reload_printers(messaging_event_context(p->msg_ctx), p->msg_ctx);
+ 	load_usershare_shares();
+ 	load_registry_shares();
+ 	num_services = lp_numservices();
+diff --git a/source3/smbd/lanman.c b/source3/smbd/lanman.c
+index 0f5d6da605c..20e22e3fd3b 100644
+--- a/source3/smbd/lanman.c
++++ b/source3/smbd/lanman.c
+@@ -43,6 +43,7 @@
+ #include "passdb/machine_sid.h"
+ #include "auth.h"
+ #include "rpc_server/rpc_ncacn_np.h"
++#include "messages.h"
+ 
+ #ifdef CHECK_TYPES
+ #undef CHECK_TYPES
+@@ -2091,6 +2092,8 @@ static bool api_RNetShareEnum(struct smbd_server_connection *sconn,
+ 
+ 	/* Ensure all the usershares are loaded. */
+ 	become_root();
++	reload_printers(messaging_event_context(sconn->msg_ctx),
++			sconn->msg_ctx);
+ 	load_registry_shares();
+ 	count = load_usershare_shares();
+ 	unbecome_root();
+diff --git a/source3/smbd/server.c b/source3/smbd/server.c
+index a26dbc4ea4a..102e8ddf85a 100644
+--- a/source3/smbd/server.c
++++ b/source3/smbd/server.c
+@@ -111,24 +111,6 @@ static void smb_conf_updated(struct messaging_context *msg,
+ 	/* printer reload triggered by background printing process */
+ }
+ 
+-/*******************************************************************
+- What to do when printcap is updated.
+- ********************************************************************/
+-
+-static void smb_pcap_updated(struct messaging_context *msg,
+-			     void *private_data,
+-			     uint32_t msg_type,
+-			     struct server_id server_id,
+-			     DATA_BLOB *data)
+-{
+-	struct tevent_context *ev_ctx =
+-		talloc_get_type_abort(private_data, struct tevent_context);
+-
+-	DEBUG(10,("Got message saying pcap was updated. Reloading.\n"));
+-	change_to_root_user();
+-	reload_printers(ev_ctx, msg);
+-}
+-
+ static void smbd_sig_term_handler(struct tevent_context *ev,
+ 				  struct tevent_signal *se,
+ 				  int signum,
+@@ -1287,10 +1269,11 @@ extern void build_options(bool screen);
+ 
+ 	if (is_daemon && !interactive
+ 	    && lp_parm_bool(-1, "smbd", "backgroundqueue", true)) {
+-		/* background queue is responsible for printcap cache updates */
+-		messaging_register(smbd_server_conn->msg_ctx,
+-				   smbd_event_context(),
+-				   MSG_PRINTER_PCAP, smb_pcap_updated);
++		/*
++		 * background queue is responsible for printcap cache updates.
++		 * Other smbd processes only reload printers when a client
++		 * issues an enumeration request.
++		 */
+ 		start_background_queue(server_event_context(),
+ 				       smbd_server_conn->msg_ctx);
+ 	} else {
+-- 
+2.14.3
+

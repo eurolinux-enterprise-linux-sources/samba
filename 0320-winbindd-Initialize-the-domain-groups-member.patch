@@ -1,0 +1,73 @@
+From 4c6c924bc1be6633fcce4fa96ac5230989006cba Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 9 Feb 2018 16:19:53 +0100
+Subject: [PATCH 320/321] winbindd: Initialize the domain groups member
+
+==9405== 4 errors in context 1 of 493:
+==9405== Conditional jump or move depends on uninitialised value(s)
+==9405==    at 0x7507F71: vfprintf (in /lib64/libc-2.12.so)
+==9405==    by 0x75C515B: __vasprintf_chk (in /lib64/libc-2.12.so)
+==9405==    by 0x2A8728: dbgtext (stdio2.h:199)
+==9405==    by 0x22DCBB: winbindd_list_groups_done (winbindd_list_groups.c:127)
+==9405==    by 0x6C7F568: _tevent_req_error (tevent_req.c:167)
+==9405==    by 0x6C7F568: _tevent_req_error (tevent_req.c:167)
+==9405==    by 0x6C7F568: _tevent_req_error (tevent_req.c:167)
+==9405==    by 0x3CDAE8: dcerpc_binding_handle_call_done (binding_handle.c:445)
+==9405==    by 0x6C7F568: _tevent_req_error (tevent_req.c:167)
+==9405==    by 0x6C7F568: _tevent_req_error (tevent_req.c:167)
+==9405==    by 0x202701: wbint_bh_raw_call_done (winbindd_dual_ndr.c:139)
+==9405==    by 0x6C82C60: tevent_common_loop_timer_delay (tevent_timed.c:341)
+==9405==    by 0x6C83CA1: epoll_event_loop_once (tevent_epoll.c:911)
+==9405==    by 0x6C822D5: std_event_loop_once (tevent_standard.c:114)
+==9405==    by 0x6C7DC3C: _tevent_loop_once (tevent.c:533)
+==9405==    by 0x1D8A03: main (winbindd.c:1490)
+==9405==  Uninitialised value was created by a heap allocation
+==9405==    at 0x4A069EE: malloc (vg_replace_malloc.c:270)
+==9405==    by 0x6A71DCA: _talloc_array (in /usr/lib64/libtalloc.so.2.1.5)
+==9405==    by 0x22D959: winbindd_list_groups_send (winbindd_list_groups.c:69)
+==9405==    by 0x1D76BC: winbind_client_request_read (winbindd.c:647)
+==9405==    by 0x23AF2A: wb_req_read_done (wb_reqtrans.c:126)
+==9405==    by 0x6C83EA5: epoll_event_loop_once (tevent_epoll.c:728)
+==9405==    by 0x6C822D5: std_event_loop_once (tevent_standard.c:114)
+==9405==    by 0x6C7DC3C: _tevent_loop_once (tevent.c:533)
+==9405==    by 0x1D8A03: main (winbindd.c:1490)
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Volker Lendecke <vl@samba.org>
+
+Autobuild-User(master): Andreas Schneider <asn@cryptomilk.org>
+Autobuild-Date(master): Tue Feb 13 00:25:27 CET 2018 on sn-devel-144
+
+(cherry picked from commit 1e8ad19653f11adbcffecde3a5762b28c5e06c8d)
+---
+ source3/winbindd/winbindd_list_groups.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/source3/winbindd/winbindd_list_groups.c b/source3/winbindd/winbindd_list_groups.c
+index 2e2c70a33de..6a70c01bbc2 100644
+--- a/source3/winbindd/winbindd_list_groups.c
++++ b/source3/winbindd/winbindd_list_groups.c
+@@ -74,6 +74,8 @@ struct tevent_req *winbindd_list_groups_send(TALLOC_CTX *mem_ctx,
+ 	}
+ 
+ 	if (request->domain_name[0] != '\0') {
++		ZERO_STRUCT(state->domains[0].groups);
++
+ 		state->domains[0].domain = find_domain_from_name_noinit(
+ 			request->domain_name);
+ 		if (state->domains[0].domain == NULL) {
+@@ -83,7 +85,10 @@ struct tevent_req *winbindd_list_groups_send(TALLOC_CTX *mem_ctx,
+ 	} else {
+ 		i = 0;
+ 		for (domain = domain_list(); domain; domain = domain->next) {
+-			state->domains[i++].domain = domain;
++			ZERO_STRUCT(state->domains[i].groups);
++
++			state->domains[i].domain = domain;
++			i++;
+ 		}
+ 	}
+ 
+-- 
+2.14.3
+

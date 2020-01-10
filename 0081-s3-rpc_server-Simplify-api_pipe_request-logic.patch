@@ -1,0 +1,82 @@
+From 162edba07d16e1fc7c32f058c24dc8a2d3f4fa84 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 8 Apr 2016 14:27:43 +0200
+Subject: [PATCH 081/321] s3:rpc_server: Simplify api_pipe_request() logic.
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/rpc_server/srv_pipe.c | 38 +++++++++++++++++++-------------------
+ 1 file changed, 19 insertions(+), 19 deletions(-)
+
+diff --git a/source3/rpc_server/srv_pipe.c b/source3/rpc_server/srv_pipe.c
+index 6e4e760ef65..57386b251d3 100644
+--- a/source3/rpc_server/srv_pipe.c
++++ b/source3/rpc_server/srv_pipe.c
+@@ -1554,45 +1554,45 @@ static bool api_rpcTNP(struct pipes_struct *p, struct ncacn_packet *pkt,
+ static bool api_pipe_request(struct pipes_struct *p,
+ 				struct ncacn_packet *pkt)
+ {
++	TALLOC_CTX *frame = talloc_stackframe();
+ 	bool ret = False;
+ 	PIPE_RPC_FNS *pipe_fns;
+ 
+ 	if (!p->pipe_bound) {
+ 		DEBUG(1, ("Pipe not bound!\n"));
+ 		data_blob_free(&p->out_data.rdata);
++		TALLOC_FREE(frame);
+ 		return false;
+ 	}
+ 
+-	if (!become_authenticated_pipe_user(p->session_info)) {
+-		DEBUG(1, ("Failed to become pipe user!\n"));
++	/* get the set of RPC functions for this context */
++
++	pipe_fns = find_pipe_fns_by_context(p->contexts,
++					    pkt->u.request.context_id);
++	if (pipe_fns == NULL) {
++		DEBUG(0, ("No rpc function table associated with context "
++			  "[%d]\n",
++			  pkt->u.request.context_id));
+ 		data_blob_free(&p->out_data.rdata);
++		TALLOC_FREE(frame);
+ 		return false;
+ 	}
+ 
+ 	DEBUG(5, ("Requested \\PIPE\\%s\n",
+-		  get_pipe_name_from_syntax(talloc_tos(), &p->syntax)));
+-
+-	/* get the set of RPC functions for this context */
++		  get_pipe_name_from_syntax(talloc_tos(), &pipe_fns->syntax)));
+ 
+-	pipe_fns = find_pipe_fns_by_context(p->contexts,
+-					    pkt->u.request.context_id);
+-
+-	if ( pipe_fns ) {
+-		TALLOC_CTX *frame = talloc_stackframe();
+-		ret = api_rpcTNP(p, pkt, pipe_fns->cmds, pipe_fns->n_cmds,
+-				 &pipe_fns->syntax);
++	if (!become_authenticated_pipe_user(p->session_info)) {
++		DEBUG(1, ("Failed to become pipe user!\n"));
++		data_blob_free(&p->out_data.rdata);
+ 		TALLOC_FREE(frame);
+-	}
+-	else {
+-		DEBUG(0, ("No rpc function table associated with context "
+-			  "[%d] on pipe [%s]\n",
+-			  pkt->u.request.context_id,
+-			  get_pipe_name_from_syntax(talloc_tos(),
+-						    &p->syntax)));
++		return false;
+ 	}
+ 
++	ret = api_rpcTNP(p, pkt, pipe_fns->cmds, pipe_fns->n_cmds,
++			 &pipe_fns->syntax);
+ 	unbecome_authenticated_pipe_user();
+ 
++	TALLOC_FREE(frame);
+ 	return ret;
+ }
+ 
+-- 
+2.14.3
+

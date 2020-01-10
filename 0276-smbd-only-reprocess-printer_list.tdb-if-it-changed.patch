@@ -1,0 +1,64 @@
+From 4ef14188b6ad62f68d35a87d40d39a5f707daa24 Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@samba.org>
+Date: Wed, 23 Jul 2014 14:42:00 +0200
+Subject: [PATCH 276/321] smbd: only reprocess printer_list.tdb if it changed
+
+The per-client smbd printer share inventory is currently updated from
+printer_list.tdb when a client enumerates printers, via EnumPrinters or
+NetShareEnum.
+printer_list.tdb is populated by the background print process, based on
+the latest printcap values retrieved from the printing backend (e.g.
+CUPS) at regular intervals.
+This change ensures that per-client smbd processes don't reparse
+printer_list.tdb if it hasn't been updated since the last enumeration.
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=10652
+
+Suggested-by: Volker Lendecke <vl@samba.org>
+Signed-off-by: David Disseldorp <ddiss@samba.org>
+---
+ source3/smbd/server_reload.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/source3/smbd/server_reload.c b/source3/smbd/server_reload.c
+index c4c5a8d57a1..57f7972042d 100644
+--- a/source3/smbd/server_reload.c
++++ b/source3/smbd/server_reload.c
+@@ -30,6 +30,13 @@
+ #include "auth.h"
+ #include "messages.h"
+ 
++/*
++ * The persistent pcap cache is populated by the background print process. Per
++ * client smbds should only reload their printer share inventories if this
++ * information has changed. Use last_reload_time to detect this.
++ */
++static time_t reload_last_pcap_time = 0;
++
+ /****************************************************************************
+  purge stale printers and reload from pre-populated pcap cache
+ **************************************************************************/
+@@ -40,6 +47,20 @@ void reload_printers(struct tevent_context *ev,
+ 	int pnum;
+ 	int snum;
+ 	const char *pname;
++	bool ok;
++	time_t pcap_last_update;
++
++	ok = pcap_cache_loaded(&pcap_last_update);
++	if (!ok) {
++		DEBUG(1, ("pcap cache not loaded\n"));
++		return;
++	}
++
++	if (reload_last_pcap_time == pcap_last_update) {
++		DEBUG(5, ("skipping printer reload, already up to date.\n"));
++		return;
++	}
++	reload_last_pcap_time = pcap_last_update;
+ 
+ 	n_services = lp_numservices();
+ 	pnum = lp_servicenumber(PRINTERS_NAME);
+-- 
+2.14.3
+

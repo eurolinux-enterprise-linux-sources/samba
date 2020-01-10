@@ -1,0 +1,68 @@
+From 5cb54f63664a7081cca448e39869b1da5770f8af Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Wed, 9 Jul 2014 13:36:06 +0200
+Subject: [PATCH 256/321] samlogon_cache: use a talloc_stackframe inside
+ netsamlogon_cache_store.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+---
+ source3/libsmb/samlogon_cache.c | 13 ++++---------
+ 1 file changed, 4 insertions(+), 9 deletions(-)
+
+diff --git a/source3/libsmb/samlogon_cache.c b/source3/libsmb/samlogon_cache.c
+index 590c950a9cc..4281965e679 100644
+--- a/source3/libsmb/samlogon_cache.c
++++ b/source3/libsmb/samlogon_cache.c
+@@ -132,7 +132,7 @@ bool netsamlogon_cache_store(const char *username, struct netr_SamInfo3 *info3)
+ 	bool result = false;
+ 	struct dom_sid	user_sid;
+ 	time_t t = time(NULL);
+-	TALLOC_CTX *mem_ctx;
++	TALLOC_CTX *tmp_ctx = talloc_stackframe();
+ 	DATA_BLOB blob;
+ 	enum ndr_err_code ndr_err;
+ 	struct netsamlogoncache_entry r;
+@@ -156,11 +156,6 @@ bool netsamlogon_cache_store(const char *username, struct netr_SamInfo3 *info3)
+ 
+ 	/* Prepare data */
+ 
+-	if (!(mem_ctx = TALLOC_P( NULL, int))) {
+-		DEBUG(0,("netsamlogon_cache_store: talloc() failed!\n"));
+-		return false;
+-	}
+-
+ 	/* only Samba fills in the username, not sure why NT doesn't */
+ 	/* so we fill it in since winbindd_getpwnam() makes use of it */
+ 
+@@ -175,11 +170,11 @@ bool netsamlogon_cache_store(const char *username, struct netr_SamInfo3 *info3)
+ 		NDR_PRINT_DEBUG(netsamlogoncache_entry, &r);
+ 	}
+ 
+-	ndr_err = ndr_push_struct_blob(&blob, mem_ctx, &r,
++	ndr_err = ndr_push_struct_blob(&blob, tmp_ctx, &r,
+ 				       (ndr_push_flags_fn_t)ndr_push_netsamlogoncache_entry);
+ 	if (!NDR_ERR_CODE_IS_SUCCESS(ndr_err)) {
+ 		DEBUG(0,("netsamlogon_cache_store: failed to push entry to cache\n"));
+-		TALLOC_FREE(mem_ctx);
++		TALLOC_FREE(tmp_ctx);
+ 		return false;
+ 	}
+ 
+@@ -190,7 +185,7 @@ bool netsamlogon_cache_store(const char *username, struct netr_SamInfo3 *info3)
+ 		result = true;
+ 	}
+ 
+-	TALLOC_FREE(mem_ctx);
++	TALLOC_FREE(tmp_ctx);
+ 
+ 	return result;
+ }
+-- 
+2.14.3
+

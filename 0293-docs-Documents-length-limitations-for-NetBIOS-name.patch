@@ -1,0 +1,32 @@
+From e4af2bee5b845ea73181dc4c9bbced3fbea0c157 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 15 Jul 2015 13:22:40 +0200
+Subject: [PATCH 293/321] docs: Documents length limitations for NetBIOS name
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=11401
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Michael Adam <obnox@samba.org>
+
+Autobuild-User(master): Andreas Schneider <asn@cryptomilk.org>
+Autobuild-Date(master): Wed Jul 15 19:35:48 CEST 2015 on sn-devel-104
+---
+ docs-xml/smbdotconf/base/netbiosname.xml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/docs-xml/smbdotconf/base/netbiosname.xml b/docs-xml/smbdotconf/base/netbiosname.xml
+index 3e00bf16b94..cea066e802c 100644
+--- a/docs-xml/smbdotconf/base/netbiosname.xml
++++ b/docs-xml/smbdotconf/base/netbiosname.xml
+@@ -9,6 +9,8 @@
+ 		the hosts DNS name) will be the name that these services are advertised under.
+ 		</para>
+ 
++		<para>Note that the maximum length for a NetBIOS name is 15 charactars.</para>
++
+ 		<para>
+ 		There is a bug in Samba-3 that breaks operation of browsing and access to shares if the netbios name
+ 		is set to the literal name <literal>PIPE</literal>. To avoid this problem, do not name your Samba-3
+-- 
+2.14.3
+

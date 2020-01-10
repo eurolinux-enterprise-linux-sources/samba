@@ -1,0 +1,3112 @@
+From ec66c9213c5400b86439a4857bbd6a2fa2e5f349 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 27 Jun 2012 15:21:11 +0200
+Subject: [PATCH 083/321] s3-rpc_server: Make it possible to use more rpc
+ exceptions.
+
+---
+ pidl/lib/Parse/Pidl/Samba3/ServerNDR.pm       |   2 +-
+ source3/include/ntdomain.h                    |  16 +---
+ source3/rpc_server/dfs/srv_dfs_nt.c           |  36 ++++----
+ source3/rpc_server/dssetup/srv_dssetup_nt.c   |  20 ++---
+ source3/rpc_server/echo/srv_echo_nt.c         |  10 +--
+ source3/rpc_server/epmapper/srv_epmapper.c    |   8 +-
+ source3/rpc_server/eventlog/srv_eventlog_nt.c |  32 +++----
+ source3/rpc_server/lsa/srv_lsa_nt.c           |  72 ++++++++--------
+ source3/rpc_server/netlogon/srv_netlog_nt.c   |  60 ++++++-------
+ source3/rpc_server/ntsvcs/srv_ntsvcs_nt.c     | 116 +++++++++++++-------------
+ source3/rpc_server/rpc_handles.c              |   2 +-
+ source3/rpc_server/rpc_ncacn_np.c             |  19 +----
+ source3/rpc_server/samr/srv_samr_nt.c         |  16 ++--
+ source3/rpc_server/spoolss/srv_spoolss_nt.c   | 112 ++++++++++++-------------
+ source3/rpc_server/srv_pipe.c                 |  25 ++----
+ source3/rpc_server/srvsvc/srv_srvsvc_nt.c     |  70 ++++++++--------
+ source3/rpc_server/svcctl/srv_svcctl_nt.c     |  56 ++++++-------
+ source3/rpc_server/winreg/srv_winreg_nt.c     |  10 +--
+ source3/rpc_server/wkssvc/srv_wkssvc_nt.c     |  53 ++++++------
+ 19 files changed, 355 insertions(+), 380 deletions(-)
+
+diff --git a/pidl/lib/Parse/Pidl/Samba3/ServerNDR.pm b/pidl/lib/Parse/Pidl/Samba3/ServerNDR.pm
+index c4374baf7c5..d433f60eb7d 100644
+--- a/pidl/lib/Parse/Pidl/Samba3/ServerNDR.pm
++++ b/pidl/lib/Parse/Pidl/Samba3/ServerNDR.pm
+@@ -183,7 +183,7 @@ sub ParseFunction($$)
+ 	);
+ 
+ 	pidl "";
+-	pidl "if (p->rng_fault_state) {";
++	pidl "if (p->fault_state) {";
+ 	pidl "\ttalloc_free(r);";
+ 	pidl "\t/* Return true here, srv_pipe_hnd.c will take care */";
+ 	pidl "\treturn true;";
+diff --git a/source3/include/ntdomain.h b/source3/include/ntdomain.h
+index 4560c5f9a0a..2fbeabca3f2 100644
+--- a/source3/include/ntdomain.h
++++ b/source3/include/ntdomain.h
+@@ -135,22 +135,10 @@ struct pipes_struct {
+ 	bool pipe_bound;
+ 
+ 	/*
+-	 * Set to true when we should return fault PDU's for everything.
++	 * Set the DCERPC_FAULT to return.
+ 	 */
+ 
+-	bool fault_state;
+-
+-	/*
+-	 * Set to true when we should return fault PDU's for a bad handle.
+-	 */
+-
+-	bool bad_handle_fault_state;
+-
+-	/*
+-	 * Set to true when the backend does not support a call.
+-	 */
+-
+-	bool rng_fault_state;
++	int fault_state;
+ 
+ 	/*
+ 	 * Set to RPC_BIG_ENDIAN when dealing with big-endian PDU's
+diff --git a/source3/rpc_server/dfs/srv_dfs_nt.c b/source3/rpc_server/dfs/srv_dfs_nt.c
+index 324af534c9b..6851db6d6c1 100644
+--- a/source3/rpc_server/dfs/srv_dfs_nt.c
++++ b/source3/rpc_server/dfs/srv_dfs_nt.c
+@@ -411,125 +411,125 @@ WERROR _dfs_GetInfo(struct pipes_struct *p, struct dfs_GetInfo *r)
+ WERROR _dfs_SetInfo(struct pipes_struct *p, struct dfs_SetInfo *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_Rename(struct pipes_struct *p, struct dfs_Rename *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_Move(struct pipes_struct *p, struct dfs_Move *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_ManagerGetConfigInfo(struct pipes_struct *p, struct dfs_ManagerGetConfigInfo *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_ManagerSendSiteInfo(struct pipes_struct *p, struct dfs_ManagerSendSiteInfo *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_AddFtRoot(struct pipes_struct *p, struct dfs_AddFtRoot *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_RemoveFtRoot(struct pipes_struct *p, struct dfs_RemoveFtRoot *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_AddStdRoot(struct pipes_struct *p, struct dfs_AddStdRoot *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_RemoveStdRoot(struct pipes_struct *p, struct dfs_RemoveStdRoot *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_ManagerInitialize(struct pipes_struct *p, struct dfs_ManagerInitialize *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_AddStdRootForced(struct pipes_struct *p, struct dfs_AddStdRootForced *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_GetDcAddress(struct pipes_struct *p, struct dfs_GetDcAddress *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_SetDcAddress(struct pipes_struct *p, struct dfs_SetDcAddress *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_FlushFtTable(struct pipes_struct *p, struct dfs_FlushFtTable *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_Add2(struct pipes_struct *p, struct dfs_Add2 *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_Remove2(struct pipes_struct *p, struct dfs_Remove2 *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_EnumEx(struct pipes_struct *p, struct dfs_EnumEx *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _dfs_SetInfo2(struct pipes_struct *p, struct dfs_SetInfo2 *r)
+ {
+ 	/* FIXME: Implement your code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+diff --git a/source3/rpc_server/dssetup/srv_dssetup_nt.c b/source3/rpc_server/dssetup/srv_dssetup_nt.c
+index d90ad421371..39bb649042b 100644
+--- a/source3/rpc_server/dssetup/srv_dssetup_nt.c
++++ b/source3/rpc_server/dssetup/srv_dssetup_nt.c
+@@ -130,7 +130,7 @@ WERROR _dssetup_DsRoleGetPrimaryDomainInformation(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleDnsNameToFlatName(struct pipes_struct *p,
+ 					struct dssetup_DsRoleDnsNameToFlatName *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -140,7 +140,7 @@ WERROR _dssetup_DsRoleDnsNameToFlatName(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleDcAsDc(struct pipes_struct *p,
+ 			     struct dssetup_DsRoleDcAsDc *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -150,7 +150,7 @@ WERROR _dssetup_DsRoleDcAsDc(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleDcAsReplica(struct pipes_struct *p,
+ 				  struct dssetup_DsRoleDcAsReplica *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -160,7 +160,7 @@ WERROR _dssetup_DsRoleDcAsReplica(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleDemoteDc(struct pipes_struct *p,
+ 			       struct dssetup_DsRoleDemoteDc *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -170,7 +170,7 @@ WERROR _dssetup_DsRoleDemoteDc(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleGetDcOperationProgress(struct pipes_struct *p,
+ 					     struct dssetup_DsRoleGetDcOperationProgress *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -180,7 +180,7 @@ WERROR _dssetup_DsRoleGetDcOperationProgress(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleGetDcOperationResults(struct pipes_struct *p,
+ 					    struct dssetup_DsRoleGetDcOperationResults *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -190,7 +190,7 @@ WERROR _dssetup_DsRoleGetDcOperationResults(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleCancel(struct pipes_struct *p,
+ 			     struct dssetup_DsRoleCancel *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -200,7 +200,7 @@ WERROR _dssetup_DsRoleCancel(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleServerSaveStateForUpgrade(struct pipes_struct *p,
+ 						struct dssetup_DsRoleServerSaveStateForUpgrade *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -210,7 +210,7 @@ WERROR _dssetup_DsRoleServerSaveStateForUpgrade(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleUpgradeDownlevelServer(struct pipes_struct *p,
+ 					     struct dssetup_DsRoleUpgradeDownlevelServer *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -220,6 +220,6 @@ WERROR _dssetup_DsRoleUpgradeDownlevelServer(struct pipes_struct *p,
+ WERROR _dssetup_DsRoleAbortDownlevelServerUpgrade(struct pipes_struct *p,
+ 						  struct dssetup_DsRoleAbortDownlevelServerUpgrade *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+diff --git a/source3/rpc_server/echo/srv_echo_nt.c b/source3/rpc_server/echo/srv_echo_nt.c
+index c7a9e1a97da..029b09fc469 100644
+--- a/source3/rpc_server/echo/srv_echo_nt.c
++++ b/source3/rpc_server/echo/srv_echo_nt.c
+@@ -87,13 +87,13 @@ void _echo_SourceData(struct pipes_struct *p, struct echo_SourceData *r)
+ 
+ void _echo_TestCall(struct pipes_struct *p, struct echo_TestCall *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return;
+ }
+ 
+ NTSTATUS _echo_TestCall2(struct pipes_struct *p, struct echo_TestCall2 *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_OK;
+ }
+ 
+@@ -105,18 +105,18 @@ uint32 _echo_TestSleep(struct pipes_struct *p, struct echo_TestSleep *r)
+ 
+ void _echo_TestEnum(struct pipes_struct *p, struct echo_TestEnum *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return;
+ }
+ 
+ void _echo_TestSurrounding(struct pipes_struct *p, struct echo_TestSurrounding *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return;
+ }
+ 
+ uint16 _echo_TestDoublePointer(struct pipes_struct *p, struct echo_TestDoublePointer *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return 0;
+ }
+diff --git a/source3/rpc_server/epmapper/srv_epmapper.c b/source3/rpc_server/epmapper/srv_epmapper.c
+index efa9b6f0df4..5c100d1ec8d 100644
+--- a/source3/rpc_server/epmapper/srv_epmapper.c
++++ b/source3/rpc_server/epmapper/srv_epmapper.c
+@@ -297,6 +297,7 @@ error_status_t _epm_Insert(struct pipes_struct *p,
+ 	/* If this is not a priviledged users, return */
+ 	if (p->transport != NCALRPC ||
+ 	    !is_priviledged_pipe(p->session_info)) {
++		p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 		return EPMAPPER_STATUS_CANT_PERFORM_OP;
+ 	}
+ 
+@@ -433,6 +434,7 @@ error_status_t _epm_Delete(struct pipes_struct *p,
+ 	/* If this is not a priviledged users, return */
+ 	if (p->transport != NCALRPC ||
+ 	    !is_priviledged_pipe(p->session_info)) {
++		p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 		return EPMAPPER_STATUS_CANT_PERFORM_OP;
+ 	}
+ 
+@@ -1096,7 +1098,7 @@ error_status_t _epm_LookupHandleFree(struct pipes_struct *p,
+ error_status_t _epm_InqObject(struct pipes_struct *p,
+ 		      struct epm_InqObject *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return EPMAPPER_STATUS_CANT_PERFORM_OP;
+ }
+ 
+@@ -1110,7 +1112,7 @@ error_status_t _epm_InqObject(struct pipes_struct *p,
+ error_status_t _epm_MgmtDelete(struct pipes_struct *p,
+ 		       struct epm_MgmtDelete *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return EPMAPPER_STATUS_CANT_PERFORM_OP;
+ }
+ 
+@@ -1121,7 +1123,7 @@ error_status_t _epm_MgmtDelete(struct pipes_struct *p,
+ error_status_t _epm_MapAuth(struct pipes_struct *p,
+ 		    struct epm_MapAuth *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return EPMAPPER_STATUS_CANT_PERFORM_OP;
+ }
+ 
+diff --git a/source3/rpc_server/eventlog/srv_eventlog_nt.c b/source3/rpc_server/eventlog/srv_eventlog_nt.c
+index b4c59ba5174..3455f6f2459 100644
+--- a/source3/rpc_server/eventlog/srv_eventlog_nt.c
++++ b/source3/rpc_server/eventlog/srv_eventlog_nt.c
+@@ -695,7 +695,7 @@ NTSTATUS _eventlog_GetNumRecords(struct pipes_struct *p,
+ 
+ NTSTATUS _eventlog_BackupEventLogW(struct pipes_struct *p, struct eventlog_BackupEventLogW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -838,104 +838,104 @@ NTSTATUS _eventlog_ReportEventW(struct pipes_struct *p,
+ NTSTATUS _eventlog_DeregisterEventSource(struct pipes_struct *p,
+ 					 struct eventlog_DeregisterEventSource *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_ChangeNotify(struct pipes_struct *p,
+ 				struct eventlog_ChangeNotify *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_RegisterEventSourceW(struct pipes_struct *p,
+ 					struct eventlog_RegisterEventSourceW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_OpenBackupEventLogW(struct pipes_struct *p,
+ 				       struct eventlog_OpenBackupEventLogW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_ClearEventLogA(struct pipes_struct *p,
+ 				  struct eventlog_ClearEventLogA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_BackupEventLogA(struct pipes_struct *p,
+ 				   struct eventlog_BackupEventLogA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_OpenEventLogA(struct pipes_struct *p,
+ 				 struct eventlog_OpenEventLogA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_RegisterEventSourceA(struct pipes_struct *p,
+ 					struct eventlog_RegisterEventSourceA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_OpenBackupEventLogA(struct pipes_struct *p,
+ 				       struct eventlog_OpenBackupEventLogA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_ReadEventLogA(struct pipes_struct *p,
+ 				 struct eventlog_ReadEventLogA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_ReportEventA(struct pipes_struct *p,
+ 				struct eventlog_ReportEventA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_RegisterClusterSvc(struct pipes_struct *p,
+ 				      struct eventlog_RegisterClusterSvc *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_DeregisterClusterSvc(struct pipes_struct *p,
+ 					struct eventlog_DeregisterClusterSvc *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_WriteClusterEvents(struct pipes_struct *p,
+ 				      struct eventlog_WriteClusterEvents *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _eventlog_ReportEventAndSourceW(struct pipes_struct *p,
+ 					 struct eventlog_ReportEventAndSourceW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+diff --git a/source3/rpc_server/lsa/srv_lsa_nt.c b/source3/rpc_server/lsa/srv_lsa_nt.c
+index a7b55e71eb6..12b584930e4 100644
+--- a/source3/rpc_server/lsa/srv_lsa_nt.c
++++ b/source3/rpc_server/lsa/srv_lsa_nt.c
+@@ -817,7 +817,7 @@ NTSTATUS _lsa_QueryInfoPolicy2(struct pipes_struct *p,
+ 	struct lsa_QueryInfoPolicy r;
+ 
+ 	if ((pdb_capabilities() & PDB_CAP_ADS) == 0) {
+-		p->rng_fault_state = True;
++		p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 		return NT_STATUS_NOT_IMPLEMENTED;
+ 	}
+ 
+@@ -3210,88 +3210,88 @@ NTSTATUS _lsa_Delete(struct pipes_struct *p,
+ 
+ NTSTATUS _lsa_SetSecObj(struct pipes_struct *p, struct lsa_SetSecObj *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_ChangePassword(struct pipes_struct *p,
+ 			     struct lsa_ChangePassword *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_SetInfoPolicy(struct pipes_struct *p, struct lsa_SetInfoPolicy *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_ClearAuditLog(struct pipes_struct *p, struct lsa_ClearAuditLog *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_GetQuotasForAccount(struct pipes_struct *p,
+ 				  struct lsa_GetQuotasForAccount *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_SetQuotasForAccount(struct pipes_struct *p,
+ 				  struct lsa_SetQuotasForAccount *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_SetInformationTrustedDomain(struct pipes_struct *p,
+ 					  struct lsa_SetInformationTrustedDomain *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_QuerySecret(struct pipes_struct *p, struct lsa_QuerySecret *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_SetTrustedDomainInfo(struct pipes_struct *p,
+ 				   struct lsa_SetTrustedDomainInfo *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_StorePrivateData(struct pipes_struct *p,
+ 			       struct lsa_StorePrivateData *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_RetrievePrivateData(struct pipes_struct *p,
+ 				  struct lsa_RetrievePrivateData *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_SetInfoPolicy2(struct pipes_struct *p,
+ 			     struct lsa_SetInfoPolicy2 *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_SetTrustedDomainInfoByName(struct pipes_struct *p,
+ 					 struct lsa_SetTrustedDomainInfoByName *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -3310,7 +3310,7 @@ NTSTATUS _lsa_EnumTrustedDomainsEx(struct pipes_struct *p,
+ 	 * _lsa_EnumTrustedDomains() afterwards - gd */
+ 
+ 	if (!(pdb_capabilities() & PDB_CAP_TRUSTED_DOMAINS_EX)) {
+-		p->rng_fault_state = True;
++		p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 		return NT_STATUS_NOT_IMPLEMENTED;
+ 	}
+ 
+@@ -3379,107 +3379,107 @@ NTSTATUS _lsa_EnumTrustedDomainsEx(struct pipes_struct *p,
+ NTSTATUS _lsa_QueryDomainInformationPolicy(struct pipes_struct *p,
+ 					   struct lsa_QueryDomainInformationPolicy *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_SetDomainInformationPolicy(struct pipes_struct *p,
+ 					 struct lsa_SetDomainInformationPolicy *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_TestCall(struct pipes_struct *p, struct lsa_TestCall *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_CREDRWRITE(struct pipes_struct *p, struct lsa_CREDRWRITE *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_CREDRREAD(struct pipes_struct *p, struct lsa_CREDRREAD *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_CREDRENUMERATE(struct pipes_struct *p, struct lsa_CREDRENUMERATE *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_CREDRWRITEDOMAINCREDENTIALS(struct pipes_struct *p,
+ 					  struct lsa_CREDRWRITEDOMAINCREDENTIALS *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_CREDRREADDOMAINCREDENTIALS(struct pipes_struct *p,
+ 					 struct lsa_CREDRREADDOMAINCREDENTIALS *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_CREDRDELETE(struct pipes_struct *p, struct lsa_CREDRDELETE *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_CREDRGETTARGETINFO(struct pipes_struct *p,
+ 				 struct lsa_CREDRGETTARGETINFO *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_CREDRPROFILELOADED(struct pipes_struct *p,
+ 				 struct lsa_CREDRPROFILELOADED *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_CREDRGETSESSIONTYPES(struct pipes_struct *p,
+ 				   struct lsa_CREDRGETSESSIONTYPES *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_LSARREGISTERAUDITEVENT(struct pipes_struct *p,
+ 				     struct lsa_LSARREGISTERAUDITEVENT *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_LSARGENAUDITEVENT(struct pipes_struct *p,
+ 				struct lsa_LSARGENAUDITEVENT *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_LSARUNREGISTERAUDITEVENT(struct pipes_struct *p,
+ 				       struct lsa_LSARUNREGISTERAUDITEVENT *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_lsaRQueryForestTrustInformation(struct pipes_struct *p,
+ 					      struct lsa_lsaRQueryForestTrustInformation *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -3992,34 +3992,34 @@ NTSTATUS _lsa_lsaRSetForestTrustInformation(struct pipes_struct *p,
+ NTSTATUS _lsa_CREDRRENAME(struct pipes_struct *p,
+ 			  struct lsa_CREDRRENAME *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_LSAROPENPOLICYSCE(struct pipes_struct *p,
+ 				struct lsa_LSAROPENPOLICYSCE *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_LSARADTREGISTERSECURITYEVENTSOURCE(struct pipes_struct *p,
+ 						 struct lsa_LSARADTREGISTERSECURITYEVENTSOURCE *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_LSARADTUNREGISTERSECURITYEVENTSOURCE(struct pipes_struct *p,
+ 						   struct lsa_LSARADTUNREGISTERSECURITYEVENTSOURCE *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+ NTSTATUS _lsa_LSARADTREPORTSECURITYEVENT(struct pipes_struct *p,
+ 					 struct lsa_LSARADTREPORTSECURITYEVENT *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+diff --git a/source3/rpc_server/netlogon/srv_netlog_nt.c b/source3/rpc_server/netlogon/srv_netlog_nt.c
+index 060ca0b5078..4734bfece04 100644
+--- a/source3/rpc_server/netlogon/srv_netlog_nt.c
++++ b/source3/rpc_server/netlogon/srv_netlog_nt.c
+@@ -1787,7 +1787,7 @@ NTSTATUS _netr_LogonSamLogonEx(struct pipes_struct *p,
+ WERROR _netr_LogonUasLogon(struct pipes_struct *p,
+ 			   struct netr_LogonUasLogon *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -1797,7 +1797,7 @@ WERROR _netr_LogonUasLogon(struct pipes_struct *p,
+ WERROR _netr_LogonUasLogoff(struct pipes_struct *p,
+ 			    struct netr_LogonUasLogoff *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -1807,7 +1807,7 @@ WERROR _netr_LogonUasLogoff(struct pipes_struct *p,
+ NTSTATUS _netr_DatabaseDeltas(struct pipes_struct *p,
+ 			      struct netr_DatabaseDeltas *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -1817,7 +1817,7 @@ NTSTATUS _netr_DatabaseDeltas(struct pipes_struct *p,
+ NTSTATUS _netr_DatabaseSync(struct pipes_struct *p,
+ 			    struct netr_DatabaseSync *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -1827,7 +1827,7 @@ NTSTATUS _netr_DatabaseSync(struct pipes_struct *p,
+ NTSTATUS _netr_AccountDeltas(struct pipes_struct *p,
+ 			     struct netr_AccountDeltas *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -1837,7 +1837,7 @@ NTSTATUS _netr_AccountDeltas(struct pipes_struct *p,
+ NTSTATUS _netr_AccountSync(struct pipes_struct *p,
+ 			   struct netr_AccountSync *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -1978,7 +1978,7 @@ WERROR _netr_GetAnyDCName(struct pipes_struct *p,
+ NTSTATUS _netr_DatabaseSync2(struct pipes_struct *p,
+ 			     struct netr_DatabaseSync2 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -1988,7 +1988,7 @@ NTSTATUS _netr_DatabaseSync2(struct pipes_struct *p,
+ NTSTATUS _netr_DatabaseRedo(struct pipes_struct *p,
+ 			    struct netr_DatabaseRedo *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -1998,7 +1998,7 @@ NTSTATUS _netr_DatabaseRedo(struct pipes_struct *p,
+ WERROR _netr_DsRGetDCName(struct pipes_struct *p,
+ 			  struct netr_DsRGetDCName *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2017,7 +2017,7 @@ NTSTATUS _netr_LogonGetCapabilities(struct pipes_struct *p,
+ WERROR _netr_NETRLOGONSETSERVICEBITS(struct pipes_struct *p,
+ 				     struct netr_NETRLOGONSETSERVICEBITS *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2027,7 +2027,7 @@ WERROR _netr_NETRLOGONSETSERVICEBITS(struct pipes_struct *p,
+ WERROR _netr_LogonGetTrustRid(struct pipes_struct *p,
+ 			      struct netr_LogonGetTrustRid *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2037,7 +2037,7 @@ WERROR _netr_LogonGetTrustRid(struct pipes_struct *p,
+ WERROR _netr_NETRLOGONCOMPUTESERVERDIGEST(struct pipes_struct *p,
+ 					  struct netr_NETRLOGONCOMPUTESERVERDIGEST *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2047,7 +2047,7 @@ WERROR _netr_NETRLOGONCOMPUTESERVERDIGEST(struct pipes_struct *p,
+ WERROR _netr_NETRLOGONCOMPUTECLIENTDIGEST(struct pipes_struct *p,
+ 					  struct netr_NETRLOGONCOMPUTECLIENTDIGEST *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2057,7 +2057,7 @@ WERROR _netr_NETRLOGONCOMPUTECLIENTDIGEST(struct pipes_struct *p,
+ WERROR _netr_DsRGetDCNameEx(struct pipes_struct *p,
+ 			    struct netr_DsRGetDCNameEx *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2067,7 +2067,7 @@ WERROR _netr_DsRGetDCNameEx(struct pipes_struct *p,
+ WERROR _netr_DsRGetSiteName(struct pipes_struct *p,
+ 			    struct netr_DsRGetSiteName *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2077,7 +2077,7 @@ WERROR _netr_DsRGetSiteName(struct pipes_struct *p,
+ NTSTATUS _netr_LogonGetDomainInfo(struct pipes_struct *p,
+ 				  struct netr_LogonGetDomainInfo *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -2087,7 +2087,7 @@ NTSTATUS _netr_LogonGetDomainInfo(struct pipes_struct *p,
+ WERROR _netr_ServerPasswordGet(struct pipes_struct *p,
+ 			       struct netr_ServerPasswordGet *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2097,7 +2097,7 @@ WERROR _netr_ServerPasswordGet(struct pipes_struct *p,
+ WERROR _netr_NETRLOGONSENDTOSAM(struct pipes_struct *p,
+ 				struct netr_NETRLOGONSENDTOSAM *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2107,7 +2107,7 @@ WERROR _netr_NETRLOGONSENDTOSAM(struct pipes_struct *p,
+ WERROR _netr_DsRAddressToSitenamesW(struct pipes_struct *p,
+ 				    struct netr_DsRAddressToSitenamesW *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2117,7 +2117,7 @@ WERROR _netr_DsRAddressToSitenamesW(struct pipes_struct *p,
+ WERROR _netr_DsRGetDCNameEx2(struct pipes_struct *p,
+ 			     struct netr_DsRGetDCNameEx2 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2127,7 +2127,7 @@ WERROR _netr_DsRGetDCNameEx2(struct pipes_struct *p,
+ WERROR _netr_NETRLOGONGETTIMESERVICEPARENTDOMAIN(struct pipes_struct *p,
+ 						 struct netr_NETRLOGONGETTIMESERVICEPARENTDOMAIN *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2137,7 +2137,7 @@ WERROR _netr_NETRLOGONGETTIMESERVICEPARENTDOMAIN(struct pipes_struct *p,
+ WERROR _netr_NetrEnumerateTrustedDomainsEx(struct pipes_struct *p,
+ 					   struct netr_NetrEnumerateTrustedDomainsEx *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2147,7 +2147,7 @@ WERROR _netr_NetrEnumerateTrustedDomainsEx(struct pipes_struct *p,
+ WERROR _netr_DsRAddressToSitenamesExW(struct pipes_struct *p,
+ 				      struct netr_DsRAddressToSitenamesExW *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2157,7 +2157,7 @@ WERROR _netr_DsRAddressToSitenamesExW(struct pipes_struct *p,
+ WERROR _netr_DsrGetDcSiteCoverageW(struct pipes_struct *p,
+ 				   struct netr_DsrGetDcSiteCoverageW *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2167,7 +2167,7 @@ WERROR _netr_DsrGetDcSiteCoverageW(struct pipes_struct *p,
+ WERROR _netr_DsrEnumerateDomainTrusts(struct pipes_struct *p,
+ 				      struct netr_DsrEnumerateDomainTrusts *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2177,7 +2177,7 @@ WERROR _netr_DsrEnumerateDomainTrusts(struct pipes_struct *p,
+ WERROR _netr_DsrDeregisterDNSHostRecords(struct pipes_struct *p,
+ 					 struct netr_DsrDeregisterDNSHostRecords *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2187,7 +2187,7 @@ WERROR _netr_DsrDeregisterDNSHostRecords(struct pipes_struct *p,
+ NTSTATUS _netr_ServerTrustPasswordsGet(struct pipes_struct *p,
+ 				       struct netr_ServerTrustPasswordsGet *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -2197,7 +2197,7 @@ NTSTATUS _netr_ServerTrustPasswordsGet(struct pipes_struct *p,
+ WERROR _netr_DsRGetForestTrustInformation(struct pipes_struct *p,
+ 					  struct netr_DsRGetForestTrustInformation *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -2476,7 +2476,7 @@ NTSTATUS _netr_ServerGetTrustInfo(struct pipes_struct *p,
+ NTSTATUS _netr_Unused47(struct pipes_struct *p,
+ 			struct netr_Unused47 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -2486,6 +2486,6 @@ NTSTATUS _netr_Unused47(struct pipes_struct *p,
+ NTSTATUS _netr_DsrUpdateReadOnlyServerDnsRecords(struct pipes_struct *p,
+ 						 struct netr_DsrUpdateReadOnlyServerDnsRecords *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+diff --git a/source3/rpc_server/ntsvcs/srv_ntsvcs_nt.c b/source3/rpc_server/ntsvcs/srv_ntsvcs_nt.c
+index 0a00e000255..bd8a6145051 100644
+--- a/source3/rpc_server/ntsvcs/srv_ntsvcs_nt.c
++++ b/source3/rpc_server/ntsvcs/srv_ntsvcs_nt.c
+@@ -227,7 +227,7 @@ WERROR _PNP_HwProfFlags(struct pipes_struct *p,
+ WERROR _PNP_Disconnect(struct pipes_struct *p,
+ 		       struct PNP_Disconnect *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -237,7 +237,7 @@ WERROR _PNP_Disconnect(struct pipes_struct *p,
+ WERROR _PNP_Connect(struct pipes_struct *p,
+ 		    struct PNP_Connect *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -247,7 +247,7 @@ WERROR _PNP_Connect(struct pipes_struct *p,
+ WERROR _PNP_GetGlobalState(struct pipes_struct *p,
+ 			   struct PNP_GetGlobalState *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -257,7 +257,7 @@ WERROR _PNP_GetGlobalState(struct pipes_struct *p,
+ WERROR _PNP_InitDetection(struct pipes_struct *p,
+ 			  struct PNP_InitDetection *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -267,7 +267,7 @@ WERROR _PNP_InitDetection(struct pipes_struct *p,
+ WERROR _PNP_ReportLogOn(struct pipes_struct *p,
+ 			struct PNP_ReportLogOn *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -277,7 +277,7 @@ WERROR _PNP_ReportLogOn(struct pipes_struct *p,
+ WERROR _PNP_GetRootDeviceInstance(struct pipes_struct *p,
+ 				  struct PNP_GetRootDeviceInstance *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -287,7 +287,7 @@ WERROR _PNP_GetRootDeviceInstance(struct pipes_struct *p,
+ WERROR _PNP_GetRelatedDeviceInstance(struct pipes_struct *p,
+ 				     struct PNP_GetRelatedDeviceInstance *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -297,7 +297,7 @@ WERROR _PNP_GetRelatedDeviceInstance(struct pipes_struct *p,
+ WERROR _PNP_EnumerateSubKeys(struct pipes_struct *p,
+ 			     struct PNP_EnumerateSubKeys *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -307,7 +307,7 @@ WERROR _PNP_EnumerateSubKeys(struct pipes_struct *p,
+ WERROR _PNP_GetDepth(struct pipes_struct *p,
+ 		     struct PNP_GetDepth *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -317,7 +317,7 @@ WERROR _PNP_GetDepth(struct pipes_struct *p,
+ WERROR _PNP_SetDeviceRegProp(struct pipes_struct *p,
+ 			     struct PNP_SetDeviceRegProp *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -327,7 +327,7 @@ WERROR _PNP_SetDeviceRegProp(struct pipes_struct *p,
+ WERROR _PNP_GetClassInstance(struct pipes_struct *p,
+ 			     struct PNP_GetClassInstance *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -337,7 +337,7 @@ WERROR _PNP_GetClassInstance(struct pipes_struct *p,
+ WERROR _PNP_CreateKey(struct pipes_struct *p,
+ 		      struct PNP_CreateKey *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -347,7 +347,7 @@ WERROR _PNP_CreateKey(struct pipes_struct *p,
+ WERROR _PNP_DeleteRegistryKey(struct pipes_struct *p,
+ 			      struct PNP_DeleteRegistryKey *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -357,7 +357,7 @@ WERROR _PNP_DeleteRegistryKey(struct pipes_struct *p,
+ WERROR _PNP_GetClassCount(struct pipes_struct *p,
+ 			  struct PNP_GetClassCount *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -367,7 +367,7 @@ WERROR _PNP_GetClassCount(struct pipes_struct *p,
+ WERROR _PNP_GetClassName(struct pipes_struct *p,
+ 			 struct PNP_GetClassName *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -377,7 +377,7 @@ WERROR _PNP_GetClassName(struct pipes_struct *p,
+ WERROR _PNP_DeleteClassKey(struct pipes_struct *p,
+ 			   struct PNP_DeleteClassKey *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -387,7 +387,7 @@ WERROR _PNP_DeleteClassKey(struct pipes_struct *p,
+ WERROR _PNP_GetInterfaceDeviceAlias(struct pipes_struct *p,
+ 				    struct PNP_GetInterfaceDeviceAlias *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -397,7 +397,7 @@ WERROR _PNP_GetInterfaceDeviceAlias(struct pipes_struct *p,
+ WERROR _PNP_GetInterfaceDeviceList(struct pipes_struct *p,
+ 				   struct PNP_GetInterfaceDeviceList *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -407,7 +407,7 @@ WERROR _PNP_GetInterfaceDeviceList(struct pipes_struct *p,
+ WERROR _PNP_GetInterfaceDeviceListSize(struct pipes_struct *p,
+ 				       struct PNP_GetInterfaceDeviceListSize *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -417,7 +417,7 @@ WERROR _PNP_GetInterfaceDeviceListSize(struct pipes_struct *p,
+ WERROR _PNP_RegisterDeviceClassAssociation(struct pipes_struct *p,
+ 					   struct PNP_RegisterDeviceClassAssociation *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -427,7 +427,7 @@ WERROR _PNP_RegisterDeviceClassAssociation(struct pipes_struct *p,
+ WERROR _PNP_UnregisterDeviceClassAssociation(struct pipes_struct *p,
+ 					     struct PNP_UnregisterDeviceClassAssociation *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -437,7 +437,7 @@ WERROR _PNP_UnregisterDeviceClassAssociation(struct pipes_struct *p,
+ WERROR _PNP_GetClassRegProp(struct pipes_struct *p,
+ 			    struct PNP_GetClassRegProp *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -447,7 +447,7 @@ WERROR _PNP_GetClassRegProp(struct pipes_struct *p,
+ WERROR _PNP_SetClassRegProp(struct pipes_struct *p,
+ 			    struct PNP_SetClassRegProp *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -457,7 +457,7 @@ WERROR _PNP_SetClassRegProp(struct pipes_struct *p,
+ WERROR _PNP_CreateDevInst(struct pipes_struct *p,
+ 			  struct PNP_CreateDevInst *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -467,7 +467,7 @@ WERROR _PNP_CreateDevInst(struct pipes_struct *p,
+ WERROR _PNP_DeviceInstanceAction(struct pipes_struct *p,
+ 				 struct PNP_DeviceInstanceAction *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -477,7 +477,7 @@ WERROR _PNP_DeviceInstanceAction(struct pipes_struct *p,
+ WERROR _PNP_GetDeviceStatus(struct pipes_struct *p,
+ 			    struct PNP_GetDeviceStatus *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -487,7 +487,7 @@ WERROR _PNP_GetDeviceStatus(struct pipes_struct *p,
+ WERROR _PNP_SetDeviceProblem(struct pipes_struct *p,
+ 			     struct PNP_SetDeviceProblem *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -497,7 +497,7 @@ WERROR _PNP_SetDeviceProblem(struct pipes_struct *p,
+ WERROR _PNP_DisableDevInst(struct pipes_struct *p,
+ 			   struct PNP_DisableDevInst *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -507,7 +507,7 @@ WERROR _PNP_DisableDevInst(struct pipes_struct *p,
+ WERROR _PNP_UninstallDevInst(struct pipes_struct *p,
+ 			     struct PNP_UninstallDevInst *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -517,7 +517,7 @@ WERROR _PNP_UninstallDevInst(struct pipes_struct *p,
+ WERROR _PNP_AddID(struct pipes_struct *p,
+ 		  struct PNP_AddID *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -527,7 +527,7 @@ WERROR _PNP_AddID(struct pipes_struct *p,
+ WERROR _PNP_RegisterDriver(struct pipes_struct *p,
+ 			   struct PNP_RegisterDriver *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -537,7 +537,7 @@ WERROR _PNP_RegisterDriver(struct pipes_struct *p,
+ WERROR _PNP_QueryRemove(struct pipes_struct *p,
+ 			struct PNP_QueryRemove *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -547,7 +547,7 @@ WERROR _PNP_QueryRemove(struct pipes_struct *p,
+ WERROR _PNP_RequestDeviceEject(struct pipes_struct *p,
+ 			       struct PNP_RequestDeviceEject *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -557,7 +557,7 @@ WERROR _PNP_RequestDeviceEject(struct pipes_struct *p,
+ WERROR _PNP_IsDockStationPresent(struct pipes_struct *p,
+ 				 struct PNP_IsDockStationPresent *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -567,7 +567,7 @@ WERROR _PNP_IsDockStationPresent(struct pipes_struct *p,
+ WERROR _PNP_RequestEjectPC(struct pipes_struct *p,
+ 			   struct PNP_RequestEjectPC *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -577,7 +577,7 @@ WERROR _PNP_RequestEjectPC(struct pipes_struct *p,
+ WERROR _PNP_AddEmptyLogConf(struct pipes_struct *p,
+ 			    struct PNP_AddEmptyLogConf *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -587,7 +587,7 @@ WERROR _PNP_AddEmptyLogConf(struct pipes_struct *p,
+ WERROR _PNP_FreeLogConf(struct pipes_struct *p,
+ 			struct PNP_FreeLogConf *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -597,7 +597,7 @@ WERROR _PNP_FreeLogConf(struct pipes_struct *p,
+ WERROR _PNP_GetFirstLogConf(struct pipes_struct *p,
+ 			    struct PNP_GetFirstLogConf *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -607,7 +607,7 @@ WERROR _PNP_GetFirstLogConf(struct pipes_struct *p,
+ WERROR _PNP_GetNextLogConf(struct pipes_struct *p,
+ 			   struct PNP_GetNextLogConf *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -617,7 +617,7 @@ WERROR _PNP_GetNextLogConf(struct pipes_struct *p,
+ WERROR _PNP_GetLogConfPriority(struct pipes_struct *p,
+ 			       struct PNP_GetLogConfPriority *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -627,7 +627,7 @@ WERROR _PNP_GetLogConfPriority(struct pipes_struct *p,
+ WERROR _PNP_AddResDes(struct pipes_struct *p,
+ 		      struct PNP_AddResDes *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -637,7 +637,7 @@ WERROR _PNP_AddResDes(struct pipes_struct *p,
+ WERROR _PNP_FreeResDes(struct pipes_struct *p,
+ 		       struct PNP_FreeResDes *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -647,7 +647,7 @@ WERROR _PNP_FreeResDes(struct pipes_struct *p,
+ WERROR _PNP_GetNextResDes(struct pipes_struct *p,
+ 			  struct PNP_GetNextResDes *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -657,7 +657,7 @@ WERROR _PNP_GetNextResDes(struct pipes_struct *p,
+ WERROR _PNP_GetResDesData(struct pipes_struct *p,
+ 			  struct PNP_GetResDesData *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -667,7 +667,7 @@ WERROR _PNP_GetResDesData(struct pipes_struct *p,
+ WERROR _PNP_GetResDesDataSize(struct pipes_struct *p,
+ 			      struct PNP_GetResDesDataSize *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -677,7 +677,7 @@ WERROR _PNP_GetResDesDataSize(struct pipes_struct *p,
+ WERROR _PNP_ModifyResDes(struct pipes_struct *p,
+ 			 struct PNP_ModifyResDes *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -687,7 +687,7 @@ WERROR _PNP_ModifyResDes(struct pipes_struct *p,
+ WERROR _PNP_DetectResourceLimit(struct pipes_struct *p,
+ 				struct PNP_DetectResourceLimit *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -697,7 +697,7 @@ WERROR _PNP_DetectResourceLimit(struct pipes_struct *p,
+ WERROR _PNP_QueryResConfList(struct pipes_struct *p,
+ 			     struct PNP_QueryResConfList *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -707,7 +707,7 @@ WERROR _PNP_QueryResConfList(struct pipes_struct *p,
+ WERROR _PNP_SetHwProf(struct pipes_struct *p,
+ 		      struct PNP_SetHwProf *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -717,7 +717,7 @@ WERROR _PNP_SetHwProf(struct pipes_struct *p,
+ WERROR _PNP_QueryArbitratorFreeData(struct pipes_struct *p,
+ 				    struct PNP_QueryArbitratorFreeData *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -727,7 +727,7 @@ WERROR _PNP_QueryArbitratorFreeData(struct pipes_struct *p,
+ WERROR _PNP_QueryArbitratorFreeSize(struct pipes_struct *p,
+ 				    struct PNP_QueryArbitratorFreeSize *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -737,7 +737,7 @@ WERROR _PNP_QueryArbitratorFreeSize(struct pipes_struct *p,
+ WERROR _PNP_RunDetection(struct pipes_struct *p,
+ 			 struct PNP_RunDetection *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -747,7 +747,7 @@ WERROR _PNP_RunDetection(struct pipes_struct *p,
+ WERROR _PNP_RegisterNotification(struct pipes_struct *p,
+ 				 struct PNP_RegisterNotification *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -757,7 +757,7 @@ WERROR _PNP_RegisterNotification(struct pipes_struct *p,
+ WERROR _PNP_UnregisterNotification(struct pipes_struct *p,
+ 				   struct PNP_UnregisterNotification *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -767,7 +767,7 @@ WERROR _PNP_UnregisterNotification(struct pipes_struct *p,
+ WERROR _PNP_GetCustomDevProp(struct pipes_struct *p,
+ 			     struct PNP_GetCustomDevProp *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -777,7 +777,7 @@ WERROR _PNP_GetCustomDevProp(struct pipes_struct *p,
+ WERROR _PNP_GetVersionInternal(struct pipes_struct *p,
+ 			       struct PNP_GetVersionInternal *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -787,7 +787,7 @@ WERROR _PNP_GetVersionInternal(struct pipes_struct *p,
+ WERROR _PNP_GetBlockedDriverInfo(struct pipes_struct *p,
+ 				 struct PNP_GetBlockedDriverInfo *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -797,6 +797,6 @@ WERROR _PNP_GetBlockedDriverInfo(struct pipes_struct *p,
+ WERROR _PNP_GetServerSideDeviceInstallFlags(struct pipes_struct *p,
+ 					    struct PNP_GetServerSideDeviceInstallFlags *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+diff --git a/source3/rpc_server/rpc_handles.c b/source3/rpc_server/rpc_handles.c
+index 0c2789e070d..d3393ec34ab 100644
+--- a/source3/rpc_server/rpc_handles.c
++++ b/source3/rpc_server/rpc_handles.c
+@@ -242,7 +242,7 @@ static struct dcesrv_handle *find_policy_by_hnd_internal(struct pipes_struct *p,
+ 	DEBUG(4,("Policy not found: "));
+ 	dump_data(4, (uint8_t *)hnd, sizeof(*hnd));
+ 
+-	p->bad_handle_fault_state = true;
++	p->fault_state = DCERPC_FAULT_CONTEXT_MISMATCH;
+ 
+ 	return NULL;
+ }
+diff --git a/source3/rpc_server/rpc_ncacn_np.c b/source3/rpc_server/rpc_ncacn_np.c
+index 87f36fcafd8..efdee270b88 100644
+--- a/source3/rpc_server/rpc_ncacn_np.c
++++ b/source3/rpc_server/rpc_ncacn_np.c
+@@ -216,24 +216,13 @@ static NTSTATUS rpcint_dispatch(struct pipes_struct *p,
+ 	}
+ 
+ 	if (p->fault_state) {
+-		p->fault_state = false;
+-		data_blob_free(&p->out_data.rdata);
+-		talloc_free_children(p->mem_ctx);
+-		return NT_STATUS_RPC_CALL_FAILED;
+-	}
+-
+-	if (p->bad_handle_fault_state) {
+-		p->bad_handle_fault_state = false;
+-		data_blob_free(&p->out_data.rdata);
+-		talloc_free_children(p->mem_ctx);
+-		return NT_STATUS_RPC_SS_CONTEXT_MISMATCH;
+-	}
++		NTSTATUS status;
+ 
+-	if (p->rng_fault_state) {
+-		p->rng_fault_state = false;
++		status = NT_STATUS(p->fault_state);
++		p->fault_state = 0;
+ 		data_blob_free(&p->out_data.rdata);
+ 		talloc_free_children(p->mem_ctx);
+-		return NT_STATUS_RPC_PROCNUM_OUT_OF_RANGE;
++		return status;
+ 	}
+ 
+ 	*out_data = p->out_data.rdata;
+diff --git a/source3/rpc_server/samr/srv_samr_nt.c b/source3/rpc_server/samr/srv_samr_nt.c
+index 2519a3f6d95..09849840778 100644
+--- a/source3/rpc_server/samr/srv_samr_nt.c
++++ b/source3/rpc_server/samr/srv_samr_nt.c
+@@ -6682,7 +6682,7 @@ NTSTATUS _samr_ValidatePassword(struct pipes_struct *p,
+ NTSTATUS _samr_Shutdown(struct pipes_struct *p,
+ 			struct samr_Shutdown *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -6692,7 +6692,7 @@ NTSTATUS _samr_Shutdown(struct pipes_struct *p,
+ NTSTATUS _samr_SetMemberAttributesOfGroup(struct pipes_struct *p,
+ 					  struct samr_SetMemberAttributesOfGroup *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -6702,6 +6702,7 @@ NTSTATUS _samr_SetMemberAttributesOfGroup(struct pipes_struct *p,
+ NTSTATUS _samr_TestPrivateFunctionsDomain(struct pipes_struct *p,
+ 					  struct samr_TestPrivateFunctionsDomain *r)
+ {
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -6711,6 +6712,7 @@ NTSTATUS _samr_TestPrivateFunctionsDomain(struct pipes_struct *p,
+ NTSTATUS _samr_TestPrivateFunctionsUser(struct pipes_struct *p,
+ 					struct samr_TestPrivateFunctionsUser *r)
+ {
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -6720,7 +6722,7 @@ NTSTATUS _samr_TestPrivateFunctionsUser(struct pipes_struct *p,
+ NTSTATUS _samr_AddMultipleMembersToAlias(struct pipes_struct *p,
+ 					 struct samr_AddMultipleMembersToAlias *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -6730,7 +6732,7 @@ NTSTATUS _samr_AddMultipleMembersToAlias(struct pipes_struct *p,
+ NTSTATUS _samr_RemoveMultipleMembersFromAlias(struct pipes_struct *p,
+ 					      struct samr_RemoveMultipleMembersFromAlias *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -6740,7 +6742,7 @@ NTSTATUS _samr_RemoveMultipleMembersFromAlias(struct pipes_struct *p,
+ NTSTATUS _samr_SetBootKeyInformation(struct pipes_struct *p,
+ 				     struct samr_SetBootKeyInformation *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -6750,7 +6752,7 @@ NTSTATUS _samr_SetBootKeyInformation(struct pipes_struct *p,
+ NTSTATUS _samr_GetBootKeyInformation(struct pipes_struct *p,
+ 				     struct samr_GetBootKeyInformation *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+ 
+@@ -6760,6 +6762,6 @@ NTSTATUS _samr_GetBootKeyInformation(struct pipes_struct *p,
+ NTSTATUS _samr_SetDsrmPassword(struct pipes_struct *p,
+ 			       struct samr_SetDsrmPassword *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return NT_STATUS_NOT_IMPLEMENTED;
+ }
+diff --git a/source3/rpc_server/spoolss/srv_spoolss_nt.c b/source3/rpc_server/spoolss/srv_spoolss_nt.c
+index 8372c43fbaf..181a7b5dbdf 100644
+--- a/source3/rpc_server/spoolss/srv_spoolss_nt.c
++++ b/source3/rpc_server/spoolss/srv_spoolss_nt.c
+@@ -10156,7 +10156,7 @@ WERROR _spoolss_AddPort(struct pipes_struct *p,
+ WERROR _spoolss_GetPrinterDriver(struct pipes_struct *p,
+ 				 struct spoolss_GetPrinterDriver *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10167,7 +10167,7 @@ WERROR _spoolss_GetPrinterDriver(struct pipes_struct *p,
+ WERROR _spoolss_ReadPrinter(struct pipes_struct *p,
+ 			    struct spoolss_ReadPrinter *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10178,7 +10178,7 @@ WERROR _spoolss_ReadPrinter(struct pipes_struct *p,
+ WERROR _spoolss_WaitForPrinterChange(struct pipes_struct *p,
+ 				     struct spoolss_WaitForPrinterChange *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10189,7 +10189,7 @@ WERROR _spoolss_WaitForPrinterChange(struct pipes_struct *p,
+ WERROR _spoolss_ConfigurePort(struct pipes_struct *p,
+ 			      struct spoolss_ConfigurePort *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10200,7 +10200,7 @@ WERROR _spoolss_ConfigurePort(struct pipes_struct *p,
+ WERROR _spoolss_DeletePort(struct pipes_struct *p,
+ 			   struct spoolss_DeletePort *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10211,7 +10211,7 @@ WERROR _spoolss_DeletePort(struct pipes_struct *p,
+ WERROR _spoolss_CreatePrinterIC(struct pipes_struct *p,
+ 				struct spoolss_CreatePrinterIC *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10222,7 +10222,7 @@ WERROR _spoolss_CreatePrinterIC(struct pipes_struct *p,
+ WERROR _spoolss_PlayGDIScriptOnPrinterIC(struct pipes_struct *p,
+ 					 struct spoolss_PlayGDIScriptOnPrinterIC *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10233,7 +10233,7 @@ WERROR _spoolss_PlayGDIScriptOnPrinterIC(struct pipes_struct *p,
+ WERROR _spoolss_DeletePrinterIC(struct pipes_struct *p,
+ 				struct spoolss_DeletePrinterIC *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10244,7 +10244,7 @@ WERROR _spoolss_DeletePrinterIC(struct pipes_struct *p,
+ WERROR _spoolss_AddPrinterConnection(struct pipes_struct *p,
+ 				     struct spoolss_AddPrinterConnection *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10255,7 +10255,7 @@ WERROR _spoolss_AddPrinterConnection(struct pipes_struct *p,
+ WERROR _spoolss_DeletePrinterConnection(struct pipes_struct *p,
+ 					struct spoolss_DeletePrinterConnection *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10266,7 +10266,7 @@ WERROR _spoolss_DeletePrinterConnection(struct pipes_struct *p,
+ WERROR _spoolss_PrinterMessageBox(struct pipes_struct *p,
+ 				  struct spoolss_PrinterMessageBox *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10277,7 +10277,7 @@ WERROR _spoolss_PrinterMessageBox(struct pipes_struct *p,
+ WERROR _spoolss_AddMonitor(struct pipes_struct *p,
+ 			   struct spoolss_AddMonitor *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10288,7 +10288,7 @@ WERROR _spoolss_AddMonitor(struct pipes_struct *p,
+ WERROR _spoolss_DeleteMonitor(struct pipes_struct *p,
+ 			      struct spoolss_DeleteMonitor *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10299,7 +10299,7 @@ WERROR _spoolss_DeleteMonitor(struct pipes_struct *p,
+ WERROR _spoolss_DeletePrintProcessor(struct pipes_struct *p,
+ 				     struct spoolss_DeletePrintProcessor *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10310,7 +10310,7 @@ WERROR _spoolss_DeletePrintProcessor(struct pipes_struct *p,
+ WERROR _spoolss_AddPrintProvidor(struct pipes_struct *p,
+ 				 struct spoolss_AddPrintProvidor *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10321,7 +10321,7 @@ WERROR _spoolss_AddPrintProvidor(struct pipes_struct *p,
+ WERROR _spoolss_DeletePrintProvidor(struct pipes_struct *p,
+ 				    struct spoolss_DeletePrintProvidor *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10332,7 +10332,7 @@ WERROR _spoolss_DeletePrintProvidor(struct pipes_struct *p,
+ WERROR _spoolss_FindFirstPrinterChangeNotification(struct pipes_struct *p,
+ 						   struct spoolss_FindFirstPrinterChangeNotification *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10343,7 +10343,7 @@ WERROR _spoolss_FindFirstPrinterChangeNotification(struct pipes_struct *p,
+ WERROR _spoolss_FindNextPrinterChangeNotification(struct pipes_struct *p,
+ 						  struct spoolss_FindNextPrinterChangeNotification *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10354,7 +10354,7 @@ WERROR _spoolss_FindNextPrinterChangeNotification(struct pipes_struct *p,
+ WERROR _spoolss_RouterFindFirstPrinterChangeNotificationOld(struct pipes_struct *p,
+ 							    struct spoolss_RouterFindFirstPrinterChangeNotificationOld *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10365,7 +10365,7 @@ WERROR _spoolss_RouterFindFirstPrinterChangeNotificationOld(struct pipes_struct
+ WERROR _spoolss_ReplyOpenPrinter(struct pipes_struct *p,
+ 				 struct spoolss_ReplyOpenPrinter *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10376,7 +10376,7 @@ WERROR _spoolss_ReplyOpenPrinter(struct pipes_struct *p,
+ WERROR _spoolss_RouterReplyPrinter(struct pipes_struct *p,
+ 				   struct spoolss_RouterReplyPrinter *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10387,7 +10387,7 @@ WERROR _spoolss_RouterReplyPrinter(struct pipes_struct *p,
+ WERROR _spoolss_ReplyClosePrinter(struct pipes_struct *p,
+ 				  struct spoolss_ReplyClosePrinter *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10398,7 +10398,7 @@ WERROR _spoolss_ReplyClosePrinter(struct pipes_struct *p,
+ WERROR _spoolss_AddPortEx(struct pipes_struct *p,
+ 			  struct spoolss_AddPortEx *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10409,7 +10409,7 @@ WERROR _spoolss_AddPortEx(struct pipes_struct *p,
+ WERROR _spoolss_RouterFindFirstPrinterChangeNotification(struct pipes_struct *p,
+ 							 struct spoolss_RouterFindFirstPrinterChangeNotification *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10420,7 +10420,7 @@ WERROR _spoolss_RouterFindFirstPrinterChangeNotification(struct pipes_struct *p,
+ WERROR _spoolss_SpoolerInit(struct pipes_struct *p,
+ 			    struct spoolss_SpoolerInit *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10431,7 +10431,7 @@ WERROR _spoolss_SpoolerInit(struct pipes_struct *p,
+ WERROR _spoolss_ResetPrinterEx(struct pipes_struct *p,
+ 			       struct spoolss_ResetPrinterEx *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10442,7 +10442,7 @@ WERROR _spoolss_ResetPrinterEx(struct pipes_struct *p,
+ WERROR _spoolss_RouterReplyPrinterEx(struct pipes_struct *p,
+ 				     struct spoolss_RouterReplyPrinterEx *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10453,7 +10453,7 @@ WERROR _spoolss_RouterReplyPrinterEx(struct pipes_struct *p,
+ WERROR _spoolss_44(struct pipes_struct *p,
+ 		   struct spoolss_44 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10464,7 +10464,7 @@ WERROR _spoolss_44(struct pipes_struct *p,
+ WERROR _spoolss_SetPort(struct pipes_struct *p,
+ 			struct spoolss_SetPort *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10475,7 +10475,7 @@ WERROR _spoolss_SetPort(struct pipes_struct *p,
+ WERROR _spoolss_4a(struct pipes_struct *p,
+ 		   struct spoolss_4a *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10486,7 +10486,7 @@ WERROR _spoolss_4a(struct pipes_struct *p,
+ WERROR _spoolss_4b(struct pipes_struct *p,
+ 		   struct spoolss_4b *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10497,7 +10497,7 @@ WERROR _spoolss_4b(struct pipes_struct *p,
+ WERROR _spoolss_4c(struct pipes_struct *p,
+ 		   struct spoolss_4c *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10508,7 +10508,7 @@ WERROR _spoolss_4c(struct pipes_struct *p,
+ WERROR _spoolss_53(struct pipes_struct *p,
+ 		   struct spoolss_53 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10519,7 +10519,7 @@ WERROR _spoolss_53(struct pipes_struct *p,
+ WERROR _spoolss_AddPerMachineConnection(struct pipes_struct *p,
+ 					struct spoolss_AddPerMachineConnection *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10530,7 +10530,7 @@ WERROR _spoolss_AddPerMachineConnection(struct pipes_struct *p,
+ WERROR _spoolss_DeletePerMachineConnection(struct pipes_struct *p,
+ 					   struct spoolss_DeletePerMachineConnection *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10541,7 +10541,7 @@ WERROR _spoolss_DeletePerMachineConnection(struct pipes_struct *p,
+ WERROR _spoolss_EnumPerMachineConnections(struct pipes_struct *p,
+ 					  struct spoolss_EnumPerMachineConnections *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10552,7 +10552,7 @@ WERROR _spoolss_EnumPerMachineConnections(struct pipes_struct *p,
+ WERROR _spoolss_5a(struct pipes_struct *p,
+ 		   struct spoolss_5a *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10563,7 +10563,7 @@ WERROR _spoolss_5a(struct pipes_struct *p,
+ WERROR _spoolss_5b(struct pipes_struct *p,
+ 		   struct spoolss_5b *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10574,7 +10574,7 @@ WERROR _spoolss_5b(struct pipes_struct *p,
+ WERROR _spoolss_5c(struct pipes_struct *p,
+ 		   struct spoolss_5c *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10585,7 +10585,7 @@ WERROR _spoolss_5c(struct pipes_struct *p,
+ WERROR _spoolss_5d(struct pipes_struct *p,
+ 		   struct spoolss_5d *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10596,7 +10596,7 @@ WERROR _spoolss_5d(struct pipes_struct *p,
+ WERROR _spoolss_5e(struct pipes_struct *p,
+ 		   struct spoolss_5e *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10607,7 +10607,7 @@ WERROR _spoolss_5e(struct pipes_struct *p,
+ WERROR _spoolss_5f(struct pipes_struct *p,
+ 		   struct spoolss_5f *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10618,7 +10618,7 @@ WERROR _spoolss_5f(struct pipes_struct *p,
+ WERROR _spoolss_60(struct pipes_struct *p,
+ 		   struct spoolss_60 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10629,7 +10629,7 @@ WERROR _spoolss_60(struct pipes_struct *p,
+ WERROR _spoolss_61(struct pipes_struct *p,
+ 		   struct spoolss_61 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10640,7 +10640,7 @@ WERROR _spoolss_61(struct pipes_struct *p,
+ WERROR _spoolss_62(struct pipes_struct *p,
+ 		   struct spoolss_62 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10651,7 +10651,7 @@ WERROR _spoolss_62(struct pipes_struct *p,
+ WERROR _spoolss_63(struct pipes_struct *p,
+ 		   struct spoolss_63 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10662,7 +10662,7 @@ WERROR _spoolss_63(struct pipes_struct *p,
+ WERROR _spoolss_64(struct pipes_struct *p,
+ 		   struct spoolss_64 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10673,7 +10673,7 @@ WERROR _spoolss_64(struct pipes_struct *p,
+ WERROR _spoolss_65(struct pipes_struct *p,
+ 		   struct spoolss_65 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10684,7 +10684,7 @@ WERROR _spoolss_65(struct pipes_struct *p,
+ WERROR _spoolss_GetCorePrinterDrivers(struct pipes_struct *p,
+ 				      struct spoolss_GetCorePrinterDrivers *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10695,7 +10695,7 @@ WERROR _spoolss_GetCorePrinterDrivers(struct pipes_struct *p,
+ WERROR _spoolss_67(struct pipes_struct *p,
+ 		   struct spoolss_67 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10706,7 +10706,7 @@ WERROR _spoolss_67(struct pipes_struct *p,
+ WERROR _spoolss_GetPrinterDriverPackagePath(struct pipes_struct *p,
+ 					    struct spoolss_GetPrinterDriverPackagePath *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10717,7 +10717,7 @@ WERROR _spoolss_GetPrinterDriverPackagePath(struct pipes_struct *p,
+ WERROR _spoolss_69(struct pipes_struct *p,
+ 		   struct spoolss_69 *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10728,7 +10728,7 @@ WERROR _spoolss_69(struct pipes_struct *p,
+ WERROR _spoolss_6a(struct pipes_struct *p,
+ 		   struct spoolss_6a *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10739,7 +10739,7 @@ WERROR _spoolss_6a(struct pipes_struct *p,
+ WERROR _spoolss_6b(struct pipes_struct *p,
+ 		   struct spoolss_6b *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10750,7 +10750,7 @@ WERROR _spoolss_6b(struct pipes_struct *p,
+ WERROR _spoolss_6c(struct pipes_struct *p,
+ 		   struct spoolss_6c *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -10761,6 +10761,6 @@ WERROR _spoolss_6c(struct pipes_struct *p,
+ WERROR _spoolss_6d(struct pipes_struct *p,
+ 		   struct spoolss_6d *r)
+ {
+-	p->rng_fault_state = true;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+diff --git a/source3/rpc_server/srv_pipe.c b/source3/rpc_server/srv_pipe.c
+index 3d49d79021b..d659705375d 100644
+--- a/source3/rpc_server/srv_pipe.c
++++ b/source3/rpc_server/srv_pipe.c
+@@ -203,7 +203,7 @@ bool create_next_pdu(struct pipes_struct *p)
+ 	 * the pipe gets closed. JRA.
+ 	 */
+ 	if (p->fault_state) {
+-		setup_fault_pdu(p, NT_STATUS(DCERPC_FAULT_OP_RNG_ERROR));
++		setup_fault_pdu(p, NT_STATUS(p->fault_state));
+ 		return true;
+ 	}
+ 
+@@ -1697,18 +1697,11 @@ static bool api_rpcTNP(struct pipes_struct *p, struct ncacn_packet *pkt,
+ 		return False;
+ 	}
+ 
+-	if (p->bad_handle_fault_state) {
+-		DEBUG(4,("api_rpcTNP: bad handle fault return.\n"));
+-		p->bad_handle_fault_state = False;
+-		setup_fault_pdu(p, NT_STATUS(DCERPC_FAULT_CONTEXT_MISMATCH));
+-		return True;
+-	}
+-
+-	if (p->rng_fault_state) {
+-		DEBUG(4, ("api_rpcTNP: rng fault return\n"));
+-		p->rng_fault_state = False;
+-		setup_fault_pdu(p, NT_STATUS(DCERPC_FAULT_OP_RNG_ERROR));
+-		return True;
++	if (p->fault_state) {
++		DEBUG(4,("api_rpcTNP: fault(%d) return.\n", p->fault_state));
++		setup_fault_pdu(p, NT_STATUS(p->fault_state));
++		p->fault_state = 0;
++		return true;
+ 	}
+ 
+ 	if (DEBUGLEVEL >= 50) {
+@@ -1763,9 +1756,9 @@ void set_incoming_fault(struct pipes_struct *p)
+ 	data_blob_free(&p->in_data.data);
+ 	p->in_data.pdu_needed_len = 0;
+ 	p->in_data.pdu.length = 0;
+-	p->fault_state = True;
+-	DEBUG(10, ("set_incoming_fault: Setting fault state on pipe %s\n",
+-		   get_pipe_name_from_syntax(talloc_tos(), &p->syntax)));
++	p->fault_state = DCERPC_FAULT_CANT_PERFORM;
++
++	DEBUG(10, ("Setting fault state\n"));
+ }
+ 
+ static NTSTATUS dcesrv_auth_request(struct pipe_auth_data *auth,
+diff --git a/source3/rpc_server/srvsvc/srv_srvsvc_nt.c b/source3/rpc_server/srvsvc/srv_srvsvc_nt.c
+index b9345d6428b..71fd0e2fcfa 100644
+--- a/source3/rpc_server/srvsvc/srv_srvsvc_nt.c
++++ b/source3/rpc_server/srvsvc/srv_srvsvc_nt.c
+@@ -2548,244 +2548,244 @@ WERROR _srvsvc_NetFileClose(struct pipes_struct *p,
+ WERROR _srvsvc_NetCharDevEnum(struct pipes_struct *p,
+ 			      struct srvsvc_NetCharDevEnum *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetCharDevGetInfo(struct pipes_struct *p,
+ 				 struct srvsvc_NetCharDevGetInfo *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetCharDevControl(struct pipes_struct *p,
+ 				 struct srvsvc_NetCharDevControl *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetCharDevQEnum(struct pipes_struct *p,
+ 			       struct srvsvc_NetCharDevQEnum *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetCharDevQGetInfo(struct pipes_struct *p,
+ 				  struct srvsvc_NetCharDevQGetInfo *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetCharDevQSetInfo(struct pipes_struct *p,
+ 				  struct srvsvc_NetCharDevQSetInfo *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetCharDevQPurge(struct pipes_struct *p,
+ 				struct srvsvc_NetCharDevQPurge *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetCharDevQPurgeSelf(struct pipes_struct *p,
+ 				    struct srvsvc_NetCharDevQPurgeSelf *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetFileGetInfo(struct pipes_struct *p,
+ 			      struct srvsvc_NetFileGetInfo *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetShareCheck(struct pipes_struct *p,
+ 			     struct srvsvc_NetShareCheck *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetServerStatisticsGet(struct pipes_struct *p,
+ 				      struct srvsvc_NetServerStatisticsGet *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetTransportAdd(struct pipes_struct *p,
+ 			       struct srvsvc_NetTransportAdd *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetTransportEnum(struct pipes_struct *p,
+ 				struct srvsvc_NetTransportEnum *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetTransportDel(struct pipes_struct *p,
+ 			       struct srvsvc_NetTransportDel *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetSetServiceBits(struct pipes_struct *p,
+ 				 struct srvsvc_NetSetServiceBits *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetPathType(struct pipes_struct *p,
+ 			   struct srvsvc_NetPathType *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetPathCanonicalize(struct pipes_struct *p,
+ 				   struct srvsvc_NetPathCanonicalize *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetPathCompare(struct pipes_struct *p,
+ 			      struct srvsvc_NetPathCompare *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRPRNAMECANONICALIZE(struct pipes_struct *p,
+ 				      struct srvsvc_NETRPRNAMECANONICALIZE *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetPRNameCompare(struct pipes_struct *p,
+ 				struct srvsvc_NetPRNameCompare *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetShareDelStart(struct pipes_struct *p,
+ 				struct srvsvc_NetShareDelStart *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetShareDelCommit(struct pipes_struct *p,
+ 				 struct srvsvc_NetShareDelCommit *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetServerTransportAddEx(struct pipes_struct *p,
+ 				       struct srvsvc_NetServerTransportAddEx *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NetServerSetServiceBitsEx(struct pipes_struct *p,
+ 					 struct srvsvc_NetServerSetServiceBitsEx *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSGETVERSION(struct pipes_struct *p,
+ 				 struct srvsvc_NETRDFSGETVERSION *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSCREATELOCALPARTITION(struct pipes_struct *p,
+ 					   struct srvsvc_NETRDFSCREATELOCALPARTITION *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSDELETELOCALPARTITION(struct pipes_struct *p,
+ 					   struct srvsvc_NETRDFSDELETELOCALPARTITION *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSSETLOCALVOLUMESTATE(struct pipes_struct *p,
+ 					  struct srvsvc_NETRDFSSETLOCALVOLUMESTATE *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSSETSERVERINFO(struct pipes_struct *p,
+ 				    struct srvsvc_NETRDFSSETSERVERINFO *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSCREATEEXITPOINT(struct pipes_struct *p,
+ 				      struct srvsvc_NETRDFSCREATEEXITPOINT *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSDELETEEXITPOINT(struct pipes_struct *p,
+ 				      struct srvsvc_NETRDFSDELETEEXITPOINT *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSMODIFYPREFIX(struct pipes_struct *p,
+ 				   struct srvsvc_NETRDFSMODIFYPREFIX *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSFIXLOCALVOLUME(struct pipes_struct *p,
+ 				     struct srvsvc_NETRDFSFIXLOCALVOLUME *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRDFSMANAGERREPORTSITEINFO(struct pipes_struct *p,
+ 					    struct srvsvc_NETRDFSMANAGERREPORTSITEINFO *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _srvsvc_NETRSERVERTRANSPORTDELEX(struct pipes_struct *p,
+ 					struct srvsvc_NETRSERVERTRANSPORTDELEX *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+diff --git a/source3/rpc_server/svcctl/srv_svcctl_nt.c b/source3/rpc_server/svcctl/srv_svcctl_nt.c
+index 044dd1548ad..18fefad917d 100644
+--- a/source3/rpc_server/svcctl/srv_svcctl_nt.c
++++ b/source3/rpc_server/svcctl/srv_svcctl_nt.c
+@@ -1004,195 +1004,195 @@ WERROR _svcctl_SetServiceObjectSecurity(struct pipes_struct *p,
+ WERROR _svcctl_DeleteService(struct pipes_struct *p,
+ 			     struct svcctl_DeleteService *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_SetServiceStatus(struct pipes_struct *p,
+ 				struct svcctl_SetServiceStatus *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_NotifyBootConfigStatus(struct pipes_struct *p,
+ 				      struct svcctl_NotifyBootConfigStatus *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_SCSetServiceBitsW(struct pipes_struct *p,
+ 				 struct svcctl_SCSetServiceBitsW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_ChangeServiceConfigW(struct pipes_struct *p,
+ 				    struct svcctl_ChangeServiceConfigW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_CreateServiceW(struct pipes_struct *p,
+ 			      struct svcctl_CreateServiceW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_QueryServiceLockStatusW(struct pipes_struct *p,
+ 				       struct svcctl_QueryServiceLockStatusW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_GetServiceKeyNameW(struct pipes_struct *p,
+ 				  struct svcctl_GetServiceKeyNameW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_SCSetServiceBitsA(struct pipes_struct *p,
+ 				 struct svcctl_SCSetServiceBitsA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_ChangeServiceConfigA(struct pipes_struct *p,
+ 				    struct svcctl_ChangeServiceConfigA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_CreateServiceA(struct pipes_struct *p,
+ 			      struct svcctl_CreateServiceA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_EnumDependentServicesA(struct pipes_struct *p,
+ 				      struct svcctl_EnumDependentServicesA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_EnumServicesStatusA(struct pipes_struct *p,
+ 				   struct svcctl_EnumServicesStatusA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_OpenSCManagerA(struct pipes_struct *p,
+ 			      struct svcctl_OpenSCManagerA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_OpenServiceA(struct pipes_struct *p,
+ 			    struct svcctl_OpenServiceA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_QueryServiceConfigA(struct pipes_struct *p,
+ 				   struct svcctl_QueryServiceConfigA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_QueryServiceLockStatusA(struct pipes_struct *p,
+ 				       struct svcctl_QueryServiceLockStatusA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_StartServiceA(struct pipes_struct *p,
+ 			     struct svcctl_StartServiceA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_GetServiceDisplayNameA(struct pipes_struct *p,
+ 				      struct svcctl_GetServiceDisplayNameA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_GetServiceKeyNameA(struct pipes_struct *p,
+ 				  struct svcctl_GetServiceKeyNameA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_GetCurrentGroupeStateW(struct pipes_struct *p,
+ 				      struct svcctl_GetCurrentGroupeStateW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_EnumServiceGroupW(struct pipes_struct *p,
+ 				 struct svcctl_EnumServiceGroupW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_ChangeServiceConfig2A(struct pipes_struct *p,
+ 				     struct svcctl_ChangeServiceConfig2A *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_ChangeServiceConfig2W(struct pipes_struct *p,
+ 				     struct svcctl_ChangeServiceConfig2W *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_QueryServiceConfig2A(struct pipes_struct *p,
+ 				    struct svcctl_QueryServiceConfig2A *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _EnumServicesStatusExA(struct pipes_struct *p,
+ 			      struct EnumServicesStatusExA *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _EnumServicesStatusExW(struct pipes_struct *p,
+ 			      struct EnumServicesStatusExW *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+ WERROR _svcctl_SCSendTSMessage(struct pipes_struct *p,
+ 			       struct svcctl_SCSendTSMessage *r)
+ {
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+diff --git a/source3/rpc_server/winreg/srv_winreg_nt.c b/source3/rpc_server/winreg/srv_winreg_nt.c
+index 1b3cab88447..34898ea8a5f 100644
+--- a/source3/rpc_server/winreg/srv_winreg_nt.c
++++ b/source3/rpc_server/winreg/srv_winreg_nt.c
+@@ -760,7 +760,7 @@ WERROR _winreg_SaveKeyEx(struct pipes_struct *p,
+ 	/* fill in your code here if you think this call should
+ 	   do anything */
+ 
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -948,7 +948,7 @@ WERROR _winreg_UnLoadKey(struct pipes_struct *p,
+ 	/* fill in your code here if you think this call should
+ 	   do anything */
+ 
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -962,7 +962,7 @@ WERROR _winreg_ReplaceKey(struct pipes_struct *p,
+ 	/* fill in your code here if you think this call should
+ 	   do anything */
+ 
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -976,7 +976,7 @@ WERROR _winreg_LoadKey(struct pipes_struct *p,
+ 	/* fill in your code here if you think this call should
+ 	   do anything */
+ 
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -1139,6 +1139,6 @@ WERROR _winreg_DeleteKeyEx(struct pipes_struct *p,
+ 	/* fill in your code here if you think this call should
+ 	   do anything */
+ 
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+diff --git a/source3/rpc_server/wkssvc/srv_wkssvc_nt.c b/source3/rpc_server/wkssvc/srv_wkssvc_nt.c
+index 2d3ec1e0361..be162502120 100644
+--- a/source3/rpc_server/wkssvc/srv_wkssvc_nt.c
++++ b/source3/rpc_server/wkssvc/srv_wkssvc_nt.c
+@@ -405,7 +405,7 @@ WERROR _wkssvc_NetWkstaSetInfo(struct pipes_struct *p,
+ 			       struct wkssvc_NetWkstaSetInfo *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -608,7 +608,7 @@ WERROR _wkssvc_NetrWkstaUserGetInfo(struct pipes_struct *p,
+ 				    struct wkssvc_NetrWkstaUserGetInfo *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -619,7 +619,7 @@ WERROR _wkssvc_NetrWkstaUserSetInfo(struct pipes_struct *p,
+ 				    struct wkssvc_NetrWkstaUserSetInfo *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -630,7 +630,7 @@ WERROR _wkssvc_NetWkstaTransportEnum(struct pipes_struct *p,
+ 				     struct wkssvc_NetWkstaTransportEnum *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -641,7 +641,7 @@ WERROR _wkssvc_NetrWkstaTransportAdd(struct pipes_struct *p,
+ 				     struct wkssvc_NetrWkstaTransportAdd *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -652,7 +652,7 @@ WERROR _wkssvc_NetrWkstaTransportDel(struct pipes_struct *p,
+ 				     struct wkssvc_NetrWkstaTransportDel *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -663,7 +663,7 @@ WERROR _wkssvc_NetrUseAdd(struct pipes_struct *p,
+ 			  struct wkssvc_NetrUseAdd *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -674,7 +674,7 @@ WERROR _wkssvc_NetrUseGetInfo(struct pipes_struct *p,
+ 			      struct wkssvc_NetrUseGetInfo *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -685,7 +685,7 @@ WERROR _wkssvc_NetrUseDel(struct pipes_struct *p,
+ 			  struct wkssvc_NetrUseDel *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -696,7 +696,7 @@ WERROR _wkssvc_NetrUseEnum(struct pipes_struct *p,
+ 			   struct wkssvc_NetrUseEnum *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -707,7 +707,7 @@ WERROR _wkssvc_NetrMessageBufferSend(struct pipes_struct *p,
+ 				     struct wkssvc_NetrMessageBufferSend *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -718,7 +718,7 @@ WERROR _wkssvc_NetrWorkstationStatisticsGet(struct pipes_struct *p,
+ 					    struct wkssvc_NetrWorkstationStatisticsGet *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -729,7 +729,7 @@ WERROR _wkssvc_NetrLogonDomainNameAdd(struct pipes_struct *p,
+ 				      struct wkssvc_NetrLogonDomainNameAdd *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -740,7 +740,7 @@ WERROR _wkssvc_NetrLogonDomainNameDel(struct pipes_struct *p,
+ 				      struct wkssvc_NetrLogonDomainNameDel *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -751,7 +751,7 @@ WERROR _wkssvc_NetrJoinDomain(struct pipes_struct *p,
+ 			      struct wkssvc_NetrJoinDomain *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -762,7 +762,7 @@ WERROR _wkssvc_NetrUnjoinDomain(struct pipes_struct *p,
+ 				struct wkssvc_NetrUnjoinDomain *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -773,7 +773,7 @@ WERROR _wkssvc_NetrRenameMachineInDomain(struct pipes_struct *p,
+ 					 struct wkssvc_NetrRenameMachineInDomain *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -784,7 +784,7 @@ WERROR _wkssvc_NetrValidateName(struct pipes_struct *p,
+ 				struct wkssvc_NetrValidateName *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -795,7 +795,7 @@ WERROR _wkssvc_NetrGetJoinInformation(struct pipes_struct *p,
+ 				      struct wkssvc_NetrGetJoinInformation *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -806,7 +806,7 @@ WERROR _wkssvc_NetrGetJoinableOus(struct pipes_struct *p,
+ 				  struct wkssvc_NetrGetJoinableOus *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -962,6 +962,7 @@ WERROR _wkssvc_NetrRenameMachineInDomain2(struct pipes_struct *p,
+ 					  struct wkssvc_NetrRenameMachineInDomain2 *r)
+ {
+ 	/* for now just return not supported */
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -972,7 +973,7 @@ WERROR _wkssvc_NetrValidateName2(struct pipes_struct *p,
+ 				 struct wkssvc_NetrValidateName2 *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -983,7 +984,7 @@ WERROR _wkssvc_NetrGetJoinableOus2(struct pipes_struct *p,
+ 				   struct wkssvc_NetrGetJoinableOus2 *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -994,7 +995,7 @@ WERROR _wkssvc_NetrAddAlternateComputerName(struct pipes_struct *p,
+ 					    struct wkssvc_NetrAddAlternateComputerName *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -1005,7 +1006,7 @@ WERROR _wkssvc_NetrRemoveAlternateComputerName(struct pipes_struct *p,
+ 					       struct wkssvc_NetrRemoveAlternateComputerName *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -1016,7 +1017,7 @@ WERROR _wkssvc_NetrSetPrimaryComputername(struct pipes_struct *p,
+ 					  struct wkssvc_NetrSetPrimaryComputername *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+ 
+@@ -1027,6 +1028,6 @@ WERROR _wkssvc_NetrEnumerateComputerNames(struct pipes_struct *p,
+ 					  struct wkssvc_NetrEnumerateComputerNames *r)
+ {
+ 	/* FIXME: Add implementation code here */
+-	p->rng_fault_state = True;
++	p->fault_state = DCERPC_FAULT_OP_RNG_ERROR;
+ 	return WERR_NOT_SUPPORTED;
+ }
+-- 
+2.14.3
+

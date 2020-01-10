@@ -1,0 +1,48 @@
+From d5c785360036ef8c393cc021d1de37306f102333 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 24 Jan 2018 16:14:28 +0100
+Subject: [PATCH 230/321] docs: Update wbinfo manpage to match options
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ docs-xml/manpages-3/wbinfo.1.xml | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/docs-xml/manpages-3/wbinfo.1.xml b/docs-xml/manpages-3/wbinfo.1.xml
+index 0701d08a56d..f816b80df07 100644
+--- a/docs-xml/manpages-3/wbinfo.1.xml
++++ b/docs-xml/manpages-3/wbinfo.1.xml
+@@ -47,7 +47,7 @@
+ 		<arg choide="opt">--online-status</arg>
+ 		<arg choice="opt">--own-domain</arg>
+ 		<arg choice="opt">-p</arg>
+-		<arg choice="opt">-P|--ping-dc</arg>
++		<arg choice="opt">--ping-dc</arg>
+ 		<arg choice="opt">-r user</arg>
+ 		<arg choide="opt">-R|--lookup-rids</arg>
+ 		<arg choice="opt">-s sid</arg>
+@@ -61,6 +61,7 @@
+ 		<arg choice="opt">--uid-info uid</arg>
+ 		<arg choide="opt">--usage</arg>
+ 		<arg choice="opt">--user-domgroups sid</arg>
++		<arg choice="opt">--user-sidinfo sid</arg>
+ 		<arg choice="opt">--user-sids sid</arg>
+ 		<arg choice="opt">-U uid</arg>
+ 		<arg choice="opt">-V</arg>
+@@ -413,6 +414,13 @@
+ 		</para></listitem>
+ 		</varlistentry>
+ 
++		<varlistentry>
++		<term>--user-sidinfo <replaceable>sid</replaceable></term>
++		<listitem><para>Get user info by sid.
++		</para></listitem>
++		</varlistentry>
++
++
+ 		<varlistentry>
+ 		<term>--user-sids <replaceable>sid</replaceable></term>
+ 		<listitem><para>Get user group SIDs for user.
+-- 
+2.14.3
+

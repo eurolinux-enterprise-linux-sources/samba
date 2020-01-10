@@ -1,0 +1,45 @@
+From b2f55e6987658e8264ab69a2ac9fcd3710c298ad Mon Sep 17 00:00:00 2001
+From: Christian Ambach <christian.ambach@de.ibm.com>
+Date: Thu, 7 Apr 2011 14:01:50 +0200
+Subject: [PATCH 085/321] libcli: allow exclusion of netbios name in NTLMV2
+ blob
+
+when no hostname is given, leave away the MsvAvNbComputerName part
+of the ntlmv2 blob
+
+Signed-off-by: Andrew Bartlett <abartlet@samba.org>
+---
+ libcli/auth/smbencrypt.c | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/libcli/auth/smbencrypt.c b/libcli/auth/smbencrypt.c
+index e0326d4c9ee..8fe606e6ed9 100644
+--- a/libcli/auth/smbencrypt.c
++++ b/libcli/auth/smbencrypt.c
+@@ -355,11 +355,18 @@ DATA_BLOB NTLMv2_generate_names_blob(TALLOC_CTX *mem_ctx,
+ 	DATA_BLOB names_blob = data_blob_talloc(mem_ctx, NULL, 0);
+ 
+ 	/* Deliberately ignore return here.. */
+-	(void)msrpc_gen(mem_ctx, &names_blob,
+-		  "aaa",
+-		  MsvAvNbDomainName, domain,
+-		  MsvAvNbComputerName, hostname,
+-		  MsvAvEOL, "");
++	if (hostname != NULL) {
++		(void)msrpc_gen(mem_ctx, &names_blob,
++			  "aaa",
++			  MsvAvNbDomainName, domain,
++			  MsvAvNbComputerName, hostname,
++			  MsvAvEOL, "");
++	} else {
++		(void)msrpc_gen(mem_ctx, &names_blob,
++			  "aa",
++			  MsvAvNbDomainName, domain,
++			  MsvAvEOL, "");
++	}
+ 	return names_blob;
+ }
+ 
+-- 
+2.14.3
+

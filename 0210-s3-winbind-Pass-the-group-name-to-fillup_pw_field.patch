@@ -1,0 +1,147 @@
+From 71cd7aabe77a889d4b552953943d03eec8b30dfa Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 18 Nov 2013 14:58:14 +0100
+Subject: [PATCH 210/321] s3-winbind: Pass the group name to fillup_pw_field().
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=2191
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/winbindd/wb_fill_pwent.c | 58 +++++++++++++++++++++++++++++-----------
+ 1 file changed, 42 insertions(+), 16 deletions(-)
+
+diff --git a/source3/winbindd/wb_fill_pwent.c b/source3/winbindd/wb_fill_pwent.c
+index 4d94a31f55c..878c5ad08d5 100644
+--- a/source3/winbindd/wb_fill_pwent.c
++++ b/source3/winbindd/wb_fill_pwent.c
+@@ -29,6 +29,7 @@ struct wb_fill_pwent_state {
+ 
+ static bool fillup_pw_field(const char *lp_template,
+ 			    const char *username,
++			    const char *grpname,
+ 			    const char *domname,
+ 			    uid_t uid,
+ 			    gid_t gid,
+@@ -36,7 +37,7 @@ static bool fillup_pw_field(const char *lp_template,
+ 			    fstring out);
+ 
+ static void wb_fill_pwent_sid2uid_done(struct tevent_req *subreq);
+-static void wb_fill_pwent_sid2gid_done(struct tevent_req *subreq);
++static void wb_fill_pwent_getgrsid_done(struct tevent_req *subreq);
+ 
+ struct tevent_req *wb_fill_pwent_send(TALLOC_CTX *mem_ctx,
+ 				      struct tevent_context *ev,
+@@ -76,33 +77,44 @@ static void wb_fill_pwent_sid2uid_done(struct tevent_req *subreq)
+ 		return;
+ 	}
+ 
+-	subreq = wb_sid2gid_send(state, state->ev, &state->info->group_sid);
++	subreq = wb_getgrsid_send(state, state->ev, &state->info->group_sid, 1);
+ 	if (tevent_req_nomem(subreq, req)) {
+ 		return;
+ 	}
+-	tevent_req_set_callback(subreq, wb_fill_pwent_sid2gid_done, req);
++	tevent_req_set_callback(subreq, wb_fill_pwent_getgrsid_done, req);
+ }
+ 
+-static void wb_fill_pwent_sid2gid_done(struct tevent_req *subreq)
++static void wb_fill_pwent_getgrsid_done(struct tevent_req *subreq)
+ {
+ 	struct tevent_req *req = tevent_req_callback_data(
+ 		subreq, struct tevent_req);
+ 	struct wb_fill_pwent_state *state = tevent_req_data(
+ 		req, struct wb_fill_pwent_state);
+ 	struct winbindd_domain *domain;
+-	char *dom_name;
++	const char *dom_name;
++	const char *grp_name;
+ 	fstring user_name, output_username;
+ 	char *mapped_name = NULL;
++	struct talloc_dict *members;
++	TALLOC_CTX *tmp_ctx = talloc_stackframe();
+ 	NTSTATUS status;
+-
+-	status = wb_sid2gid_recv(subreq, &state->pw->pw_gid);
++	bool ok;
++
++	status = wb_getgrsid_recv(subreq,
++				  tmp_ctx,
++				  &dom_name,
++				  &grp_name,
++				  &state->pw->pw_gid,
++				  &members);
+ 	TALLOC_FREE(subreq);
+ 	if (tevent_req_nterror(req, status)) {
++		talloc_free(tmp_ctx);
+ 		return;
+ 	}
+ 
+ 	domain = find_domain_from_sid_noinit(&state->info->user_sid);
+ 	if (domain == NULL) {
++		talloc_free(tmp_ctx);
+ 		tevent_req_nterror(req, NT_STATUS_NO_SUCH_USER);
+ 		return;
+ 	}
+@@ -133,17 +145,30 @@ static void wb_fill_pwent_sid2gid_done(struct tevent_req *subreq)
+ 	fstrcpy(state->pw->pw_gecos, state->info->full_name);
+ 
+ 	/* Home directory and shell */
+-
+-	if (!fillup_pw_field(lp_template_homedir(), user_name, dom_name,
+-			     state->pw->pw_uid, state->pw->pw_gid,
+-			     state->info->homedir, state->pw->pw_dir)) {
++	ok = fillup_pw_field(lp_template_homedir(),
++			     user_name,
++			     grp_name,
++			     dom_name,
++			     state->pw->pw_uid,
++			     state->pw->pw_gid,
++			     state->info->homedir,
++			     state->pw->pw_dir);
++	if (!ok) {
++		talloc_free(tmp_ctx);
+ 		tevent_req_nterror(req, NT_STATUS_NO_SUCH_USER);
+ 		return;
+ 	}
+ 
+-	if (!fillup_pw_field(lp_template_shell(), user_name, dom_name,
+-			     state->pw->pw_uid, state->pw->pw_gid,
+-			     state->info->shell, state->pw->pw_shell)) {
++	ok = fillup_pw_field(lp_template_shell(),
++			     user_name,
++			     grp_name,
++			     dom_name,
++			     state->pw->pw_uid,
++			     state->pw->pw_gid,
++			     state->info->shell,
++			     state->pw->pw_shell);
++	talloc_free(tmp_ctx);
++	if (!ok) {
+ 		tevent_req_nterror(req, NT_STATUS_NO_SUCH_USER);
+ 		return;
+ 	}
+@@ -162,6 +187,7 @@ NTSTATUS wb_fill_pwent_recv(struct tevent_req *req)
+ 
+ static bool fillup_pw_field(const char *lp_template,
+ 			    const char *username,
++			    const char *grpname,
+ 			    const char *domname,
+ 			    uid_t uid,
+ 			    gid_t gid,
+@@ -181,11 +207,11 @@ static bool fillup_pw_field(const char *lp_template,
+ 
+ 	if ((in != NULL) && (in[0] != '\0') && (lp_security() == SEC_ADS)) {
+ 		templ = talloc_sub_specified(talloc_tos(), in,
+-					     username, NULL, domname,
++					     username, grpname, domname,
+ 					     uid, gid);
+ 	} else {
+ 		templ = talloc_sub_specified(talloc_tos(), lp_template,
+-					     username, NULL, domname,
++					     username, grpname, domname,
+ 					     uid, gid);
+ 	}
+ 
+-- 
+2.14.3
+

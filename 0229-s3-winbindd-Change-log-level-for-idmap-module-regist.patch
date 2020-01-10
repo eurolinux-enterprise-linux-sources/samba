@@ -1,0 +1,43 @@
+From 3521da3ecf7dec85aa9dc64af99ab6eb5cab7197 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 24 Jan 2018 16:13:03 +0100
+Subject: [PATCH 229/321] s3:winbindd: Change log level for idmap module
+ registration
+
+Do not spam the logs with this.
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/winbindd/idmap.c    | 2 +-
+ source3/winbindd/nss_info.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/source3/winbindd/idmap.c b/source3/winbindd/idmap.c
+index 2eb655f7800..7a07398078b 100644
+--- a/source3/winbindd/idmap.c
++++ b/source3/winbindd/idmap.c
+@@ -129,7 +129,7 @@ NTSTATUS smb_register_idmap(int version, const char *name,
+ 
+ 	for (entry = backends; entry != NULL; entry = entry->next) {
+ 		if (strequal(entry->name, name)) {
+-			DEBUG(0,("Idmap module %s already registered!\n",
++			DEBUG(5,("Idmap module %s already registered!\n",
+ 				 name));
+ 			return NT_STATUS_OBJECT_NAME_COLLISION;
+ 		}
+diff --git a/source3/winbindd/nss_info.c b/source3/winbindd/nss_info.c
+index 77ac421d551..4baccd4188d 100644
+--- a/source3/winbindd/nss_info.c
++++ b/source3/winbindd/nss_info.c
+@@ -66,7 +66,7 @@ static struct nss_function_entry *nss_get_backend(const char *name )
+ 	}
+ 
+ 	if ( nss_get_backend(name) ) {
+-		DEBUG(0,("smb_register_idmap_nss: idmap module %s "
++		DEBUG(5,("smb_register_idmap_nss: idmap module %s "
+ 			 "already registered!\n", name));
+ 		return NT_STATUS_OBJECT_NAME_COLLISION;
+ 	}
+-- 
+2.14.3
+

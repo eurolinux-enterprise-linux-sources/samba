@@ -1,0 +1,200 @@
+From fef65dbc2047dade3064e919138c0e044e4b8040 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 18 Nov 2013 14:58:04 +0100
+Subject: [PATCH 209/321] s3-lib: Add grpname to talloc_sub_specified().
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=2191
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+(cherry picked from commit bca2b01b9c12c1a689cd1102c4beb74b11cb6f01)
+---
+ source3/include/proto.h          |  1 +
+ source3/lib/substitute.c         | 31 +++++++++++++++++++++++++------
+ source3/passdb/passdb.c          |  8 ++++----
+ source3/passdb/pdb_ldap.c        | 24 +++++++++++++++++++++---
+ source3/torture/torture.c        |  2 +-
+ source3/utils/net_sam.c          |  2 ++
+ source3/winbindd/wb_fill_pwent.c |  4 ++--
+ 7 files changed, 56 insertions(+), 16 deletions(-)
+
+diff --git a/source3/include/proto.h b/source3/include/proto.h
+index 2ed6547bd2f..5c9516569c2 100644
+--- a/source3/include/proto.h
++++ b/source3/include/proto.h
+@@ -356,6 +356,7 @@ char *talloc_sub_basic(TALLOC_CTX *mem_ctx, const char *smb_name,
+ char *talloc_sub_specified(TALLOC_CTX *mem_ctx,
+ 			const char *input_string,
+ 			const char *username,
++			const char *grpname,
+ 			const char *domain,
+ 			uid_t uid,
+ 			gid_t gid);
+diff --git a/source3/lib/substitute.c b/source3/lib/substitute.c
+index 68328e566b0..10beed74d8c 100644
+--- a/source3/lib/substitute.c
++++ b/source3/lib/substitute.c
+@@ -722,6 +722,7 @@ done:
+ char *talloc_sub_specified(TALLOC_CTX *mem_ctx,
+ 			const char *input_string,
+ 			const char *username,
++			const char *grpname,
+ 			const char *domain,
+ 			uid_t uid,
+ 			gid_t gid)
+@@ -757,9 +758,18 @@ char *talloc_sub_specified(TALLOC_CTX *mem_ctx,
+ 			break;
+ 		case 'G' :
+ 			if (gid != -1) {
+-				a_string = talloc_string_sub(
+-					tmp_ctx, a_string, "%G",
+-					gidtoname(gid));
++				const char *name;
++
++				if (grpname != NULL) {
++					name = grpname;
++				} else {
++					name = gidtoname(gid);
++				}
++
++				a_string = talloc_string_sub(tmp_ctx,
++							     a_string,
++							     "%G",
++							     name);
+ 			} else {
+ 				a_string = talloc_string_sub(
+ 					tmp_ctx, a_string,
+@@ -768,9 +778,18 @@ char *talloc_sub_specified(TALLOC_CTX *mem_ctx,
+ 			break;
+ 		case 'g' :
+ 			if (gid != -1) {
+-				a_string = talloc_string_sub(
+-					tmp_ctx, a_string, "%g",
+-					gidtoname(gid));
++				const char *name;
++
++				if (grpname != NULL) {
++					name = grpname;
++				} else {
++					name = gidtoname(gid);
++				}
++
++				a_string = talloc_string_sub(tmp_ctx,
++							     a_string,
++							     "%g",
++							     name);
+ 			} else {
+ 				a_string = talloc_string_sub(
+ 					tmp_ctx, a_string, "%g", "NO_GROUP");
+diff --git a/source3/passdb/passdb.c b/source3/passdb/passdb.c
+index 52c11295120..493a694feac 100644
+--- a/source3/passdb/passdb.c
++++ b/source3/passdb/passdb.c
+@@ -228,16 +228,16 @@ static NTSTATUS samu_set_unix_internal(struct samu *user, const struct passwd *p
+ 		/* set some basic attributes */
+ 
+ 		pdb_set_profile_path(user, talloc_sub_specified(user, 
+-			lp_logon_path(), pwd->pw_name, domain, pwd->pw_uid, pwd->pw_gid), 
++			lp_logon_path(), pwd->pw_name, NULL, domain, pwd->pw_uid, pwd->pw_gid),
+ 			PDB_DEFAULT);		
+ 		pdb_set_homedir(user, talloc_sub_specified(user, 
+-			lp_logon_home(), pwd->pw_name, domain, pwd->pw_uid, pwd->pw_gid),
++			lp_logon_home(), pwd->pw_name, NULL, domain, pwd->pw_uid, pwd->pw_gid),
+ 			PDB_DEFAULT);
+ 		pdb_set_dir_drive(user, talloc_sub_specified(user, 
+-			lp_logon_drive(), pwd->pw_name, domain, pwd->pw_uid, pwd->pw_gid),
++			lp_logon_drive(), pwd->pw_name, NULL, domain, pwd->pw_uid, pwd->pw_gid),
+ 			PDB_DEFAULT);
+ 		pdb_set_logon_script(user, talloc_sub_specified(user, 
+-			lp_logon_script(), pwd->pw_name, domain, pwd->pw_uid, pwd->pw_gid), 
++			lp_logon_script(), pwd->pw_name, NULL, domain, pwd->pw_uid, pwd->pw_gid),
+ 			PDB_DEFAULT);
+ 	}
+ 
+diff --git a/source3/passdb/pdb_ldap.c b/source3/passdb/pdb_ldap.c
+index 9316f4078a2..1665641b755 100644
+--- a/source3/passdb/pdb_ldap.c
++++ b/source3/passdb/pdb_ldap.c
+@@ -5399,11 +5399,29 @@ static NTSTATUS ldapsam_create_user(struct pdb_methods *my_methods,
+ 
+ 		if (is_machine) {
+ 			/* TODO: choose a more appropriate default for machines */
+-			homedir = talloc_sub_specified(tmp_ctx, lp_template_homedir(), "SMB_workstations_home", ldap_state->domain_name, uid, gid);
++			homedir = talloc_sub_specified(tmp_ctx,
++						       lp_template_homedir(),
++						       "SMB_workstations_home",
++						       NULL,
++						       ldap_state->domain_name,
++						       uid,
++						       gid);
+ 			shell = talloc_strdup(tmp_ctx, "/bin/false");
+ 		} else {
+-			homedir = talloc_sub_specified(tmp_ctx, lp_template_homedir(), name, ldap_state->domain_name, uid, gid);
+-			shell = talloc_sub_specified(tmp_ctx, lp_template_shell(), name, ldap_state->domain_name, uid, gid);
++			homedir = talloc_sub_specified(tmp_ctx,
++						       lp_template_homedir(),
++						       name,
++						       NULL,
++						       ldap_state->domain_name,
++						       uid,
++						       gid);
++			shell = talloc_sub_specified(tmp_ctx,
++						     lp_template_shell(),
++						     name,
++						     NULL,
++						     ldap_state->domain_name,
++						     uid,
++						     gid);
+ 		}
+ 		uidstr = talloc_asprintf(tmp_ctx, "%u", (unsigned int)uid);
+ 		gidstr = talloc_asprintf(tmp_ctx, "%u", (unsigned int)gid);
+diff --git a/source3/torture/torture.c b/source3/torture/torture.c
+index d37d83c7824..def177bf86c 100644
+--- a/source3/torture/torture.c
++++ b/source3/torture/torture.c
+@@ -5976,7 +5976,7 @@ static bool subst_test(const char *str, const char *user, const char *domain,
+ 	char *subst;
+ 	bool result = true;
+ 
+-	subst = talloc_sub_specified(talloc_tos(), str, user, domain, uid, gid);
++	subst = talloc_sub_specified(talloc_tos(), str, user, NULL, domain, uid, gid);
+ 
+ 	if (strcmp(subst, expected) != 0) {
+ 		printf("sub_specified(%s, %s, %s, %d, %d) returned [%s], expected "
+diff --git a/source3/utils/net_sam.c b/source3/utils/net_sam.c
+index 0ff7c55acf3..b49bb737c1e 100644
+--- a/source3/utils/net_sam.c
++++ b/source3/utils/net_sam.c
+@@ -1847,10 +1847,12 @@ doma_done:
+ 		gidstr = talloc_asprintf(tc, "%u", (unsigned int)domadmins_gid);
+ 		dir = talloc_sub_specified(tc, lp_template_homedir(),
+ 						"Administrator",
++						NULL,
+ 						get_global_sam_name(),
+ 						uid, domadmins_gid);
+ 		shell = talloc_sub_specified(tc, lp_template_shell(),
+ 						"Administrator",
++						NULL,
+ 						get_global_sam_name(),
+ 						uid, domadmins_gid);
+ 
+diff --git a/source3/winbindd/wb_fill_pwent.c b/source3/winbindd/wb_fill_pwent.c
+index 8f094802a90..4d94a31f55c 100644
+--- a/source3/winbindd/wb_fill_pwent.c
++++ b/source3/winbindd/wb_fill_pwent.c
+@@ -181,11 +181,11 @@ static bool fillup_pw_field(const char *lp_template,
+ 
+ 	if ((in != NULL) && (in[0] != '\0') && (lp_security() == SEC_ADS)) {
+ 		templ = talloc_sub_specified(talloc_tos(), in,
+-					     username, domname,
++					     username, NULL, domname,
+ 					     uid, gid);
+ 	} else {
+ 		templ = talloc_sub_specified(talloc_tos(), lp_template,
+-					     username, domname,
++					     username, NULL, domname,
+ 					     uid, gid);
+ 	}
+ 
+-- 
+2.14.3
+

@@ -1,0 +1,87 @@
+From 64f759b119836dcb304f084c612959ec8cf38e78 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Fri, 3 Jan 2014 09:25:23 +0100
+Subject: [PATCH 051/321] librpc/ndr: add
+ LIBNDR_FLAG_SUBCONTEXT_NO_UNREAD_BYTES
+
+This lets ndr_pull_subcontext_end() make sure that all
+subcontext bytes are consumed otherwise it returns NDR_ERR_UNREAD_BYTES.
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit b62308ed994e9734dfd934d230531010d9e7cefa)
+(cherry picked from commit 8a4447553ad1aae10e42eac08d08c26ad40eac5c)
+---
+ librpc/idl/idl_types.h |  2 ++
+ librpc/ndr/libndr.h    |  6 ++++++
+ librpc/ndr/ndr.c       | 20 ++++++++++++++++++++
+ 3 files changed, 28 insertions(+)
+
+diff --git a/librpc/idl/idl_types.h b/librpc/idl/idl_types.h
+index 023c04020ea..fd95fdde5d8 100644
+--- a/librpc/idl/idl_types.h
++++ b/librpc/idl/idl_types.h
+@@ -47,3 +47,5 @@
+ 
+ #define NDR_RELATIVE_REVERSE LIBNDR_FLAG_RELATIVE_REVERSE
+ #define NDR_NO_RELATIVE_REVERSE LIBNDR_FLAG_NO_RELATIVE_REVERSE
++
++#define NDR_SUBCONTEXT_NO_UNREAD_BYTES LIBNDR_FLAG_SUBCONTEXT_NO_UNREAD_BYTES
+diff --git a/librpc/ndr/libndr.h b/librpc/ndr/libndr.h
+index ce3a6766259..2453d5aa130 100644
+--- a/librpc/ndr/libndr.h
++++ b/librpc/ndr/libndr.h
+@@ -124,6 +124,12 @@ struct ndr_print {
+ #define LIBNDR_FLAG_STR_UTF8		(1<<12)
+ #define LIBNDR_STRING_FLAGS		(0x7FFC)
+ 
++/*
++ * This lets ndr_pull_subcontext_end() return
++ * NDR_ERR_UNREAD_BYTES.
++ */
++#define LIBNDR_FLAG_SUBCONTEXT_NO_UNREAD_BYTES (1<<17)
++
+ /* set if relative pointers should *not* be marshalled in reverse order */
+ #define LIBNDR_FLAG_NO_RELATIVE_REVERSE	(1<<18)
+ 
+diff --git a/librpc/ndr/ndr.c b/librpc/ndr/ndr.c
+index ba17a278938..fc11738c23e 100644
+--- a/librpc/ndr/ndr.c
++++ b/librpc/ndr/ndr.c
+@@ -640,6 +640,8 @@ _PUBLIC_ enum ndr_err_code ndr_pull_subcontext_end(struct ndr_pull *ndr,
+ 				 ssize_t size_is)
+ {
+ 	uint32_t advance;
++	uint32_t highest_ofs;
++
+ 	if (size_is >= 0) {
+ 		advance = size_is;
+ 	} else if (header_size > 0) {
+@@ -647,6 +649,24 @@ _PUBLIC_ enum ndr_err_code ndr_pull_subcontext_end(struct ndr_pull *ndr,
+ 	} else {
+ 		advance = subndr->offset;
+ 	}
++
++	if (subndr->offset > ndr->relative_highest_offset) {
++		highest_ofs = subndr->offset;
++	} else {
++		highest_ofs = subndr->relative_highest_offset;
++	}
++	if (!(subndr->flags & LIBNDR_FLAG_SUBCONTEXT_NO_UNREAD_BYTES)) {
++		/*
++		 * avoid an error unless SUBCONTEXT_NO_UNREAD_BYTES is specified
++		 */
++		highest_ofs = advance;
++	}
++	if (highest_ofs < advance) {
++		return ndr_pull_error(subndr, NDR_ERR_UNREAD_BYTES,
++				      "not all bytes consumed ofs[%u] advance[%u]",
++				      highest_ofs, advance);
++	}
++
+ 	NDR_CHECK(ndr_pull_advance(ndr, advance));
+ 	return NDR_ERR_SUCCESS;
+ }
+-- 
+2.14.3
+

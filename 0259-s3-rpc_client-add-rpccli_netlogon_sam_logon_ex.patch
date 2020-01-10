@@ -1,0 +1,206 @@
+From bc90bb87c63bed76165556463245393d4b8a5b55 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Tue, 15 Jul 2014 16:21:08 +0200
+Subject: [PATCH 259/321] s3-rpc_client: add rpccli_netlogon_sam_logon_ex().
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This function deals with interactive samlogon and does a dcerpc_netr_SamLogonEx
+call (w/o credential chaining).
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+---
+ source3/rpc_client/cli_netlogon.c | 152 ++++++++++++++++++++++++++++++++++++++
+ source3/rpc_client/cli_netlogon.h |  10 +++
+ 2 files changed, 162 insertions(+)
+
+diff --git a/source3/rpc_client/cli_netlogon.c b/source3/rpc_client/cli_netlogon.c
+index 9454226aa3f..0290944ff60 100644
+--- a/source3/rpc_client/cli_netlogon.c
++++ b/source3/rpc_client/cli_netlogon.c
+@@ -360,6 +360,158 @@ NTSTATUS rpccli_netlogon_sam_logon(struct rpc_pipe_client *cli,
+ 	return result;
+ }
+ 
++/* Logon domain user */
++
++NTSTATUS rpccli_netlogon_sam_logon_ex(struct rpc_pipe_client *cli,
++				      TALLOC_CTX *mem_ctx,
++				      uint32 logon_parameters,
++				      const char *domain,
++				      const char *username,
++				      const char *password,
++				      const char *workstation,
++				      uint16_t validation_level,
++				      int logon_type,
++				      struct netr_SamInfo3 **info3)
++{
++	NTSTATUS result = NT_STATUS_UNSUCCESSFUL;
++	NTSTATUS status;
++	struct netr_Authenticator ret_creds;
++	union netr_LogonLevel *logon;
++	union netr_Validation validation;
++	uint8_t authoritative;
++	fstring clnt_name_slash;
++	struct dcerpc_binding_handle *b = cli->binding_handle;
++	uint32_t flags = 0;
++
++	ZERO_STRUCT(ret_creds);
++
++	logon = TALLOC_ZERO_P(mem_ctx, union netr_LogonLevel);
++	if (!logon) {
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	if (workstation) {
++		fstr_sprintf( clnt_name_slash, "\\\\%s", workstation );
++	} else {
++		fstr_sprintf( clnt_name_slash, "\\\\%s", global_myname() );
++	}
++
++	/* Initialise input parameters */
++
++	switch (logon_type) {
++	case NetlogonInteractiveInformation: {
++
++		struct netr_PasswordInfo *password_info;
++
++		struct samr_Password lmpassword;
++		struct samr_Password ntpassword;
++
++		password_info = TALLOC_ZERO_P(mem_ctx, struct netr_PasswordInfo);
++		if (!password_info) {
++			return NT_STATUS_NO_MEMORY;
++		}
++
++		nt_lm_owf_gen(password, ntpassword.hash, lmpassword.hash);
++
++		if (cli->dc->negotiate_flags & NETLOGON_NEG_ARCFOUR) {
++			netlogon_creds_arcfour_crypt(cli->dc, lmpassword.hash, 16);
++			netlogon_creds_arcfour_crypt(cli->dc, ntpassword.hash, 16);
++		} else {
++			netlogon_creds_des_encrypt(cli->dc, &lmpassword);
++			netlogon_creds_des_encrypt(cli->dc, &ntpassword);
++		}
++
++		password_info->identity_info.domain_name.string		= domain;
++		password_info->identity_info.parameter_control		= logon_parameters;
++		password_info->identity_info.logon_id_low		= 0xdead;
++		password_info->identity_info.logon_id_high		= 0xbeef;
++		password_info->identity_info.account_name.string	= username;
++		password_info->identity_info.workstation.string		= clnt_name_slash;
++
++		password_info->lmpassword = lmpassword;
++		password_info->ntpassword = ntpassword;
++
++		logon->password = password_info;
++
++		break;
++	}
++	case NetlogonNetworkInformation: {
++		struct netr_NetworkInfo *network_info;
++		uint8 chal[8];
++		unsigned char local_lm_response[24];
++		unsigned char local_nt_response[24];
++		struct netr_ChallengeResponse lm;
++		struct netr_ChallengeResponse nt;
++
++		ZERO_STRUCT(lm);
++		ZERO_STRUCT(nt);
++
++		network_info = TALLOC_ZERO_P(mem_ctx, struct netr_NetworkInfo);
++		if (!network_info) {
++			return NT_STATUS_NO_MEMORY;
++		}
++
++		generate_random_buffer(chal, 8);
++
++		SMBencrypt(password, chal, local_lm_response);
++		SMBNTencrypt(password, chal, local_nt_response);
++
++		lm.length = 24;
++		lm.data = local_lm_response;
++
++		nt.length = 24;
++		nt.data = local_nt_response;
++
++		network_info->identity_info.domain_name.string		= domain;
++		network_info->identity_info.parameter_control		= logon_parameters;
++		network_info->identity_info.logon_id_low		= 0xdead;
++		network_info->identity_info.logon_id_high		= 0xbeef;
++		network_info->identity_info.account_name.string		= username;
++		network_info->identity_info.workstation.string		= clnt_name_slash;
++
++		memcpy(network_info->challenge, chal, 8);
++		network_info->nt = nt;
++		network_info->lm = lm;
++
++		logon->network = network_info;
++
++		break;
++	}
++	default:
++		DEBUG(0, ("switch value %d not supported\n",
++			logon_type));
++		return NT_STATUS_INVALID_INFO_CLASS;
++	}
++
++	status = dcerpc_netr_LogonSamLogonEx(b, mem_ctx,
++					     cli->srv_name_slash,
++					     global_myname(),
++					     logon_type,
++					     logon,
++					     validation_level,
++					     &validation,
++					     &authoritative,
++					     &flags,
++					     &result);
++	if (!NT_STATUS_IS_OK(status)) {
++		return status;
++	}
++
++	if (!NT_STATUS_IS_OK(result)) {
++		return result;
++	}
++
++	netlogon_creds_decrypt_samlogon(cli->dc, validation_level, &validation);
++
++	result = map_validation_to_info3(mem_ctx, validation_level, &validation, info3);
++	if (!NT_STATUS_IS_OK(result)) {
++		return result;
++	}
++
++	return result;
++}
++
++
+ /**
+  * Logon domain user with an 'network' SAM logon
+  *
+diff --git a/source3/rpc_client/cli_netlogon.h b/source3/rpc_client/cli_netlogon.h
+index 9c6cbc8989d..3763843f27a 100644
+--- a/source3/rpc_client/cli_netlogon.h
++++ b/source3/rpc_client/cli_netlogon.h
+@@ -43,6 +43,16 @@ NTSTATUS rpccli_netlogon_sam_logon(struct rpc_pipe_client *cli,
+ 				   uint16_t validation_level,
+ 				   int logon_type,
+ 				   struct netr_SamInfo3 **info3);
++NTSTATUS rpccli_netlogon_sam_logon_ex(struct rpc_pipe_client *cli,
++				      TALLOC_CTX *mem_ctx,
++				      uint32 logon_parameters,
++				      const char *domain,
++				      const char *username,
++				      const char *password,
++				      const char *workstation,
++				      uint16_t validation_level,
++				      int logon_type,
++				      struct netr_SamInfo3 **info3);
+ NTSTATUS rpccli_netlogon_sam_network_logon(struct rpc_pipe_client *cli,
+ 					   TALLOC_CTX *mem_ctx,
+ 					   uint32 logon_parameters,
+-- 
+2.14.3
+

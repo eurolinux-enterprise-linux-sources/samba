@@ -1,0 +1,129 @@
+From ebd9891c440023f34507e165d93c17a29abccc5f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Mon, 7 Jul 2014 17:16:32 +0200
+Subject: [PATCH 255/321] s3-winbindd: use wcache_query_user_fullname after
+ inspecting samlogon cache.
+
+The reason for this followup query is that very often the samlogon cache only
+contains a info3 netlogon user structure that has been retrieved during a
+netlogon samlogon authentication using "network" logon level. With that logon
+level only a few info3 fields are filled in; the user's fullname is never filled
+in that case. This is problematic when the cache is used to fill in the user's
+gecos field (for NSS queries). When we have retrieved the user's fullname during
+other queries, reuse it from the other caches.
+
+Thanks to Matt Rogers <mrogers@redhat.com>.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=10440
+
+Guenther
+
+Pair-Programmed-With: Andreas Schneider <asn@samba.org>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+---
+ source3/winbindd/winbindd_ads.c   |  8 ++++++++
+ source3/winbindd/winbindd_msrpc.c |  8 ++++++++
+ source3/winbindd/winbindd_pam.c   | 41 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 57 insertions(+)
+
+diff --git a/source3/winbindd/winbindd_ads.c b/source3/winbindd/winbindd_ads.c
+index 3099ff042fb..7d960fca8ed 100644
+--- a/source3/winbindd/winbindd_ads.c
++++ b/source3/winbindd/winbindd_ads.c
+@@ -515,6 +515,14 @@ static NTSTATUS query_user(struct winbindd_domain *domain,
+ 
+ 		TALLOC_FREE(user);
+ 
++		if (info->full_name == NULL) {
++			/* this might fail so we dont check the return code */
++			wcache_query_user_fullname(domain,
++						   mem_ctx,
++						   sid,
++						   &info->full_name);
++		}
++
+ 		return NT_STATUS_OK;
+ 	}
+ 
+diff --git a/source3/winbindd/winbindd_msrpc.c b/source3/winbindd/winbindd_msrpc.c
+index 17c08c5e2c3..ae8fedc7ace 100644
+--- a/source3/winbindd/winbindd_msrpc.c
++++ b/source3/winbindd/winbindd_msrpc.c
+@@ -439,6 +439,14 @@ static NTSTATUS msrpc_query_user(struct winbindd_domain *domain,
+ 		user_info->full_name = talloc_strdup(user_info,
+ 						     user->base.full_name.string);
+ 
++		if (user_info->full_name == NULL) {
++			/* this might fail so we dont check the return code */
++			wcache_query_user_fullname(domain,
++						   mem_ctx,
++						   user_sid,
++						   &user_info->full_name);
++		}
++
+ 		status = NT_STATUS_OK;
+ 		goto done;
+ 	}
+diff --git a/source3/winbindd/winbindd_pam.c b/source3/winbindd/winbindd_pam.c
+index 2b31d5487e7..86b352e1576 100644
+--- a/source3/winbindd/winbindd_pam.c
++++ b/source3/winbindd/winbindd_pam.c
+@@ -1739,6 +1739,26 @@ process_result:
+ 		sid_compose(&user_sid, info3->base.domain_sid,
+ 			    info3->base.rid);
+ 
++		if (info3->base.full_name.string == NULL) {
++			struct netr_SamInfo3 *cached_info3;
++
++			cached_info3 = netsamlogon_cache_get(state->mem_ctx,
++							     &user_sid);
++			if (cached_info3 != NULL &&
++			    cached_info3->base.full_name.string != NULL) {
++				info3->base.full_name.string =
++					talloc_strdup(info3,
++						      cached_info3->base.full_name.string);
++			} else {
++
++				/* this might fail so we dont check the return code */
++				wcache_query_user_fullname(domain,
++						info3,
++						&user_sid,
++						&info3->base.full_name.string);
++			}
++		}
++
+ 		wcache_invalidate_samlogon(find_domain_from_name(name_domain),
+ 					   &user_sid);
+ 		netsamlogon_cache_store(name_user, info3);
+@@ -1910,6 +1930,27 @@ process_result:
+ 
+ 		sid_compose(&user_sid, info3->base.domain_sid,
+ 			    info3->base.rid);
++
++		if (info3->base.full_name.string == NULL) {
++			struct netr_SamInfo3 *cached_info3;
++
++			cached_info3 = netsamlogon_cache_get(state->mem_ctx,
++							     &user_sid);
++			if (cached_info3 != NULL &&
++			    cached_info3->base.full_name.string != NULL) {
++				info3->base.full_name.string =
++					talloc_strdup(info3,
++						      cached_info3->base.full_name.string);
++			} else {
++
++				/* this might fail so we dont check the return code */
++				wcache_query_user_fullname(domain,
++						info3,
++						&user_sid,
++						&info3->base.full_name.string);
++			}
++		}
++
+ 		wcache_invalidate_samlogon(find_domain_from_name(name_domain),
+ 					   &user_sid);
+ 		netsamlogon_cache_store(name_user, info3);
+-- 
+2.14.3
+

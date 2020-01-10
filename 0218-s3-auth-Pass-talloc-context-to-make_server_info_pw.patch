@@ -1,0 +1,214 @@
+From ba935f87df030afab7532376365539b4266a7a12 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 13 Dec 2013 19:11:01 +0100
+Subject: [PATCH 218/321] s3-auth: Pass talloc context to
+ make_server_info_pw().
+
+Pair-Programmed-With: Guenther Deschner <gd@samba.org>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+---
+ source3/auth/auth_server.c |  5 ++++-
+ source3/auth/auth_unix.c   |  7 +++++--
+ source3/auth/auth_util.c   | 51 ++++++++++++++++++++++++++--------------------
+ source3/auth/proto.h       |  9 ++++----
+ source3/auth/user_krb5.c   |  2 +-
+ 5 files changed, 44 insertions(+), 30 deletions(-)
+
+diff --git a/source3/auth/auth_server.c b/source3/auth/auth_server.c
+index fdd7671c091..969caadba9f 100644
+--- a/source3/auth/auth_server.c
++++ b/source3/auth/auth_server.c
+@@ -448,7 +448,10 @@ use this machine as the password server.\n"));
+ 		if ( (pass = smb_getpwnam(talloc_tos(), user_info->mapped.account_name,
+ 			&real_username, True )) != NULL )
+ 		{
+-			nt_status = make_server_info_pw(server_info, pass->pw_name, pass);
++			nt_status = make_server_info_pw(mem_ctx,
++							pass->pw_name,
++							pass,
++							server_info);
+ 			TALLOC_FREE(pass);
+ 			TALLOC_FREE(real_username);
+ 		}
+diff --git a/source3/auth/auth_unix.c b/source3/auth/auth_unix.c
+index 086c39e026f..d6ef5479cc1 100644
+--- a/source3/auth/auth_unix.c
++++ b/source3/auth/auth_unix.c
+@@ -56,8 +56,11 @@ static NTSTATUS check_unix_security(const struct auth_context *auth_context,
+ 	unbecome_root();
+ 
+ 	if (NT_STATUS_IS_OK(nt_status)) {
+-		if (pass) {
+-			make_server_info_pw(server_info, pass->pw_name, pass);
++		if (pass != NULL) {
++			nt_status = make_server_info_pw(mem_ctx,
++							pass->pw_name,
++							pass,
++							server_info);
+ 		} else {
+ 			/* we need to do somthing more useful here */
+ 			nt_status = NT_STATUS_NO_SUCH_USER;
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index 98bbbef19e2..2fdcc62f02e 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -569,14 +569,15 @@ NTSTATUS create_local_token(struct auth_serversupplied_info *server_info)
+  to a struct samu
+ ***************************************************************************/
+ 
+-NTSTATUS make_server_info_pw(struct auth_serversupplied_info **server_info,
+-                             char *unix_username,
+-			     struct passwd *pwd)
++NTSTATUS make_server_info_pw(TALLOC_CTX *mem_ctx,
++			     const char *unix_username,
++			     const struct passwd *pwd,
++			     struct auth_serversupplied_info **server_info)
+ {
+ 	NTSTATUS status;
+ 	struct samu *sampass = NULL;
+ 	char *qualified_name = NULL;
+-	TALLOC_CTX *mem_ctx = NULL;
++	TALLOC_CTX *tmp_ctx;
+ 	struct dom_sid u_sid;
+ 	enum lsa_SidType type;
+ 	struct auth_serversupplied_info *result;
+@@ -594,27 +595,27 @@ NTSTATUS make_server_info_pw(struct auth_serversupplied_info **server_info,
+ 	 * plaintext passwords were used with no SAM backend.
+ 	 */
+ 
+-	mem_ctx = talloc_init("make_server_info_pw_tmp");
+-	if (!mem_ctx) {
++	tmp_ctx = talloc_stackframe();
++	if (tmp_ctx == NULL) {
+ 		return NT_STATUS_NO_MEMORY;
+ 	}
+ 
+-	qualified_name = talloc_asprintf(mem_ctx, "%s\\%s",
++	qualified_name = talloc_asprintf(tmp_ctx, "%s\\%s",
+ 					unix_users_domain_name(),
+ 					unix_username );
+ 	if (!qualified_name) {
+-		TALLOC_FREE(mem_ctx);
++		TALLOC_FREE(tmp_ctx);
+ 		return NT_STATUS_NO_MEMORY;
+ 	}
+ 
+-	if (!lookup_name(mem_ctx, qualified_name, LOOKUP_NAME_ALL,
++	if (!lookup_name(tmp_ctx, qualified_name, LOOKUP_NAME_ALL,
+ 						NULL, NULL,
+ 						&u_sid, &type)) {
+-		TALLOC_FREE(mem_ctx);
++		TALLOC_FREE(tmp_ctx);
+ 		return NT_STATUS_NO_SUCH_USER;
+ 	}
+ 
+-	TALLOC_FREE(mem_ctx);
++	TALLOC_FREE(tmp_ctx);
+ 
+ 	if (type != SID_NAME_USER) {
+ 		return NT_STATUS_NO_SUCH_USER;
+@@ -637,7 +638,7 @@ NTSTATUS make_server_info_pw(struct auth_serversupplied_info **server_info,
+ 	/* set the user sid to be the calculated u_sid */
+ 	pdb_set_user_sid(sampass, &u_sid, PDB_SET);
+ 
+-	result = make_server_info(NULL);
++	result = make_server_info(mem_ctx);
+ 	if (result == NULL) {
+ 		TALLOC_FREE(sampass);
+ 		return NT_STATUS_NO_MEMORY;
+@@ -922,37 +923,43 @@ NTSTATUS make_serverinfo_from_username(TALLOC_CTX *mem_ctx,
+ {
+ 	struct auth_serversupplied_info *result;
+ 	struct passwd *pwd;
++	TALLOC_CTX *tmp_ctx;
+ 	NTSTATUS status;
+ 
+-	pwd = Get_Pwnam_alloc(talloc_tos(), username);
+-	if (pwd == NULL) {
+-		return NT_STATUS_NO_SUCH_USER;
++	tmp_ctx = talloc_stackframe();
++	if (tmp_ctx == NULL) {
++		return NT_STATUS_NO_MEMORY;
+ 	}
+ 
+-	status = make_server_info_pw(&result, pwd->pw_name, pwd);
+-
+-	TALLOC_FREE(pwd);
++	pwd = Get_Pwnam_alloc(tmp_ctx, username);
++	if (pwd == NULL) {
++		status = NT_STATUS_NO_SUCH_USER;
++		goto done;
++	}
+ 
++	status = make_server_info_pw(tmp_ctx, pwd->pw_name, pwd, &result);
+ 	if (!NT_STATUS_IS_OK(status)) {
+-		return status;
++		goto done;
+ 	}
+ 
+ 	result->nss_token = true;
+ 	result->guest = is_guest;
+ 
+ 	if (use_guest_token) {
+-		status = make_server_info_guest(mem_ctx, &result);
++		status = make_server_info_guest(tmp_ctx, &result);
+ 	} else {
+ 		status = create_local_token(result);
+ 	}
+ 
++	*presult = talloc_steal(mem_ctx, result);
++done:
++	talloc_free(tmp_ctx);
+ 	if (!NT_STATUS_IS_OK(status)) {
+ 		TALLOC_FREE(result);
+ 		return status;
+ 	}
+ 
+-	*presult = talloc_steal(mem_ctx, result);
+-	return NT_STATUS_OK;
++	return status;
+ }
+ 
+ 
+diff --git a/source3/auth/proto.h b/source3/auth/proto.h
+index c5a9647ad6b..50a27cfe9d7 100644
+--- a/source3/auth/proto.h
++++ b/source3/auth/proto.h
+@@ -144,14 +144,15 @@ NTSTATUS create_token_from_username(TALLOC_CTX *mem_ctx, const char *username,
+ bool user_in_group_sid(const char *username, const struct dom_sid *group_sid);
+ bool user_in_group(const char *username, const char *groupname);
+ struct passwd;
+-NTSTATUS make_server_info_pw(struct auth_serversupplied_info **server_info,
+-                             char *unix_username,
+-			     struct passwd *pwd);
++NTSTATUS make_server_info_pw(TALLOC_CTX *mem_ctx,
++			     const char *unix_username,
++			     const struct passwd *pwd,
++			     struct auth_serversupplied_info **server_info);
+ NTSTATUS make_serverinfo_from_username(TALLOC_CTX *mem_ctx,
+ 				       const char *username,
+ 				       bool use_guest_token,
+ 				       bool is_guest,
+-				       struct auth_serversupplied_info **presult);
++				       struct auth_serversupplied_info **session_info);
+ struct auth_serversupplied_info *copy_serverinfo(TALLOC_CTX *mem_ctx,
+ 						 const struct auth_serversupplied_info *src);
+ bool init_guest_info(void);
+diff --git a/source3/auth/user_krb5.c b/source3/auth/user_krb5.c
+index e52149afd7e..1214b45e09b 100644
+--- a/source3/auth/user_krb5.c
++++ b/source3/auth/user_krb5.c
+@@ -238,7 +238,7 @@ NTSTATUS make_server_info_krb5(TALLOC_CTX *mem_ctx,
+ 			 */
+ 			DEBUG(10, ("didn't find user %s in passdb, calling "
+ 				   "make_server_info_pw\n", username));
+-			status = make_server_info_pw(&tmp, username, pw);
++			status = make_server_info_pw(mem_ctx, username, pw, &tmp);
+ 		}
+ 		TALLOC_FREE(sampass);
+ 
+-- 
+2.14.3
+

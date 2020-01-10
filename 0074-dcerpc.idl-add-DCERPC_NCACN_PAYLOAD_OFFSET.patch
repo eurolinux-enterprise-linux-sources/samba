@@ -1,0 +1,28 @@
+From 7c910779e774d94e77af739056c3a56ee1a15655 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Sun, 15 Sep 2013 16:43:22 +0200
+Subject: [PATCH 074/321] dcerpc.idl: add DCERPC_NCACN_PAYLOAD_OFFSET
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Michael Adam <obnox@samba.org>
+(cherry picked from commit cd4643730552674b2a10a37665eeac13c58940a8)
+(cherry picked from commit 8b4f608d2bec33d6bc48574b45f28fab891ec0c0)
+---
+ librpc/idl/dcerpc.idl | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/librpc/idl/dcerpc.idl b/librpc/idl/dcerpc.idl
+index 4f990219784..75ef2ecc54f 100644
+--- a/librpc/idl/dcerpc.idl
++++ b/librpc/idl/dcerpc.idl
+@@ -477,6 +477,7 @@ interface dcerpc
+ 	const uint8 DCERPC_FRAG_LEN_OFFSET =  8;
+ 	const uint8 DCERPC_AUTH_LEN_OFFSET = 10;
+ 	const uint8 DCERPC_CALL_ID_OFFSET  = 12;
++	const uint8 DCERPC_NCACN_PAYLOAD_OFFSET = 16;
+ 
+ 	/* little-endian flag */
+ 	const uint8 DCERPC_DREP_LE  = 0x10;
+-- 
+2.14.3
+

@@ -1,0 +1,30 @@
+From 9a48f457466be863a88dab278fd48ac24df5caae Mon Sep 17 00:00:00 2001
+From: Jeremy Allison <jra@samba.org>
+Date: Mon, 19 Dec 2016 12:15:59 -0800
+Subject: [PATCH 189/321] s3: smbd: OpenDir_fsp() - Fix memory leak on error.
+
+CVE-2017-2619
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=12496
+
+Signed-off-by: Jeremy Allison <jra@samba.org>
+---
+ source3/smbd/dir.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/smbd/dir.c b/source3/smbd/dir.c
+index 6aed4a6da46..efd1a73aab6 100644
+--- a/source3/smbd/dir.c
++++ b/source3/smbd/dir.c
+@@ -1521,7 +1521,7 @@ static struct smb_Dir *OpenDir_fsp(TALLOC_CTX *mem_ctx, connection_struct *conn,
+ 			dirp->dir_path,
+ 			strerror(errno)));
+ 		if (errno != ENOSYS) {
+-			return NULL;
++			goto fail;
+ 		}
+ 	}
+ 
+-- 
+2.14.3
+

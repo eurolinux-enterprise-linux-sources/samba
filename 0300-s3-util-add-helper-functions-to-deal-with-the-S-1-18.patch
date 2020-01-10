@@ -1,0 +1,112 @@
+From d5c7b50a552a0ddd1673367de056df57f94bad00 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Fri, 15 Jan 2016 14:43:12 +0100
+Subject: [PATCH 300/321] s3-util: add helper functions to deal with the S-1-18
+ domain.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=11677
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+---
+ source3/Makefile.in            |  2 +-
+ source3/include/proto.h        |  5 +++++
+ source3/lib/util_specialsids.c | 40 ++++++++++++++++++++++++++++++++++++++++
+ source3/wscript_build          |  1 +
+ 4 files changed, 47 insertions(+), 1 deletion(-)
+ create mode 100644 source3/lib/util_specialsids.c
+
+diff --git a/source3/Makefile.in b/source3/Makefile.in
+index 148bd46665e..d55b9f58f13 100644
+--- a/source3/Makefile.in
++++ b/source3/Makefile.in
+@@ -457,7 +457,7 @@ LIB_OBJ = $(LIBSAMBAUTIL_OBJ) $(UTIL_OBJ) $(CRYPTO_OBJ) \
+ 	  lib/access.o lib/smbrun.o \
+ 	  ../lib/util/bitmap.o lib/dprintf.o $(UTIL_REG_OBJ) \
+ 	  lib/wins_srv.o \
+-	  lib/util_str.o lib/clobber.o lib/util_sid.o \
++	  lib/util_str.o lib/clobber.o lib/util_sid.o lib/util_specialsids.o \
+ 	  lib/util_unistr.o ../lib/util/charset/codepoints.o lib/util_file.o \
+ 	  lib/util.o lib/util_cmdline.o lib/util_names.o \
+ 	  lib/util_sock.o lib/sock_exec.o lib/util_sec.o \
+diff --git a/source3/include/proto.h b/source3/include/proto.h
+index 5c9516569c2..6dc149f6a7f 100644
+--- a/source3/include/proto.h
++++ b/source3/include/proto.h
+@@ -1934,6 +1934,11 @@ bool sid_check_is_in_unix_groups(const struct dom_sid *sid);
+ const char *unix_groups_domain_name(void);
+ bool lookup_unix_group_name(const char *name, struct dom_sid *sid);
+ 
++/* The following definitions come from lib/util_specialsids.c  */
++bool sid_check_is_asserted_identity(const struct dom_sid *sid);
++bool sid_check_is_in_asserted_identity(const struct dom_sid *sid);
++const char *asserted_identity_domain_name(void);
++
+ /* The following definitions come from lib/filename_util.c */
+ 
+ NTSTATUS get_full_smb_filename(TALLOC_CTX *ctx, const struct smb_filename *smb_fname,
+diff --git a/source3/lib/util_specialsids.c b/source3/lib/util_specialsids.c
+new file mode 100644
+index 00000000000..4c402d6dade
+--- /dev/null
++++ b/source3/lib/util_specialsids.c
+@@ -0,0 +1,40 @@
++/*
++   Unix SMB/CIFS implementation.
++   Copyright (C) Guenther Deschner 2016
++
++   This program is free software; you can redistribute it and/or modify
++   it under the terms of the GNU General Public License as published by
++   the Free Software Foundation; either version 3 of the License, or
++   (at your option) any later version.
++
++   This program is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++   GNU General Public License for more details.
++
++   You should have received a copy of the GNU General Public License
++   along with this program.  If not, see <http://www.gnu.org/licenses/>.
++*/
++
++#include "includes.h"
++#include "../libcli/security/security.h"
++
++bool sid_check_is_asserted_identity(const struct dom_sid *sid)
++{
++	return dom_sid_equal(sid, &global_sid_Asserted_Identity);
++}
++
++bool sid_check_is_in_asserted_identity(const struct dom_sid *sid)
++{
++	struct dom_sid dom_sid;
++
++	sid_copy(&dom_sid, sid);
++	sid_split_rid(&dom_sid, NULL);
++
++	return sid_check_is_asserted_identity(&dom_sid);
++}
++
++const char *asserted_identity_domain_name(void)
++{
++	return "Asserted Identity";
++}
+diff --git a/source3/wscript_build b/source3/wscript_build
+index 40935d1ebdb..ceccbb59932 100755
+--- a/source3/wscript_build
++++ b/source3/wscript_build
+@@ -74,6 +74,7 @@ LIB_SRC = '''
+           lib/bitmap.c lib/dprintf.c
+           lib/wins_srv.c
+           lib/clobber.c lib/util_sid.c
++          lib/util_specialsids.c
+           lib/util_file.c
+           lib/util.c lib/util_cmdline.c lib/util_names.c
+           lib/util_sock.c lib/sock_exec.c lib/util_sec.c
+-- 
+2.14.3
+

@@ -1,0 +1,86 @@
+From 0468775a1f9c9e7ae039ef4d34cab45088cacea8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Tue, 15 Jul 2014 14:25:19 +0200
+Subject: [PATCH 253/321] s3-winbindd: call interactive samlogon via
+ rpccli_netlogon_password_logon.
+
+Guenther
+
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Pair-Programmed-With: Andreas Schneider <asn@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+---
+ source3/winbindd/winbindd_pam.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/source3/winbindd/winbindd_pam.c b/source3/winbindd/winbindd_pam.c
+index 125e393220d..2b31d5487e7 100644
+--- a/source3/winbindd/winbindd_pam.c
++++ b/source3/winbindd/winbindd_pam.c
+@@ -1152,11 +1152,13 @@ static NTSTATUS winbind_samlogon_retry_loop(struct winbindd_domain *domain,
+ 					    uint32_t logon_parameters,
+ 					    const char *server,
+ 					    const char *username,
++					    const char *password,
+ 					    const char *domainname,
+ 					    const char *workstation,
+ 					    const uint8_t chal[8],
+ 					    DATA_BLOB lm_response,
+ 					    DATA_BLOB nt_response,
++					    bool interactive,
+ 					    struct netr_SamInfo3 **info3)
+ {
+ 	int attempts = 0;
+@@ -1269,7 +1271,19 @@ static NTSTATUS winbind_samlogon_retry_loop(struct winbindd_domain *domain,
+ 			domain->can_do_validation6 = false;
+ 		}
+ 
+-		if (domain->can_do_samlogon_ex && domain->can_do_validation6) {
++		if (interactive && username != NULL && password != NULL) {
++			result = rpccli_netlogon_sam_logon(
++					netlogon_pipe,
++					mem_ctx,
++					logon_parameters,
++					domainname,
++					username,
++					password,
++					workstation,
++					3, /* FIXME */
++					NetlogonInteractiveInformation,
++					info3);
++		} else if (domain->can_do_samlogon_ex && domain->can_do_validation6) {
+ 			result = rpccli_netlogon_sam_network_logon_ex(
+ 					netlogon_pipe,
+ 					mem_ctx,
+@@ -1453,11 +1467,13 @@ static NTSTATUS winbindd_dual_pam_auth_samlogon(TALLOC_CTX *mem_ctx,
+ 					     0,
+ 					     domain->dcname,
+ 					     name_user,
++					     pass,
+ 					     name_domain,
+ 					     global_myname(),
+ 					     chal,
+ 					     lm_resp,
+ 					     nt_resp,
++					     true,
+ 					     &my_info3);
+ 	if (!NT_STATUS_IS_OK(result)) {
+ 		goto done;
+@@ -1874,12 +1890,14 @@ enum winbindd_result winbindd_dual_pam_auth_crap(struct winbindd_domain *domain,
+ 					     state->request->data.auth_crap.logon_parameters,
+ 					     domain->dcname,
+ 					     name_user,
++					     NULL, /* password */
+ 					     name_domain,
+ 					     /* Bug #3248 - found by Stefan Burkei. */
+ 					     workstation, /* We carefully set this above so use it... */
+ 					     state->request->data.auth_crap.chal,
+ 					     lm_resp,
+ 					     nt_resp,
++					     false, /* interactive */
+ 					     &info3);
+ 	if (!NT_STATUS_IS_OK(result)) {
+ 		goto done;
+-- 
+2.14.3
+

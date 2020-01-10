@@ -1,0 +1,29 @@
+From 8b807a3b25d51c51ef0adfa79b84333bf7c50e01 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 5 Oct 2016 10:32:16 +0200
+Subject: [PATCH 304/321] s3-winbind: Fix memory leak in
+ ad_idmap_cached_connection_internal()
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/winbindd/idmap_ad.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/source3/winbindd/idmap_ad.c b/source3/winbindd/idmap_ad.c
+index 2b35a4f59ab..2b21051307b 100644
+--- a/source3/winbindd/idmap_ad.c
++++ b/source3/winbindd/idmap_ad.c
+@@ -127,7 +127,9 @@ static ADS_STATUS ad_idmap_cached_connection_internal(struct idmap_domain *dom)
+ 		realm = wb_dom->alt_name;
+ 	}
+ 
+-	if ( (ads = ads_init(realm, dom->name, ldap_server)) == NULL ) {
++	ads = ads_init(realm, dom->name, ldap_server);
++	SAFE_FREE(ldap_server);
++	if (ads == NULL) {
+ 		DEBUG(1,("ads_init failed\n"));
+ 		return ADS_ERROR_NT(NT_STATUS_NO_MEMORY);
+ 	}
+-- 
+2.14.3
+

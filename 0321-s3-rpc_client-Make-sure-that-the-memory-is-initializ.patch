@@ -1,0 +1,63 @@
+From 4f47130879d74989354eeed8cc1a3e91c13e738b Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Tue, 13 Feb 2018 14:12:45 +0100
+Subject: [PATCH 321/321] s3:rpc_client: Make sure that the memory is
+ initialized
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/rpc_client/cli_pipe.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/source3/rpc_client/cli_pipe.c b/source3/rpc_client/cli_pipe.c
+index 7637b0f47c4..5f0e2107670 100644
+--- a/source3/rpc_client/cli_pipe.c
++++ b/source3/rpc_client/cli_pipe.c
+@@ -2898,7 +2898,7 @@ NTSTATUS rpccli_schannel_bind_data(TALLOC_CTX *mem_ctx, const char *domain,
+ 	struct schannel_state *schannel_auth;
+ 	struct pipe_auth_data *result;
+ 
+-	result = talloc(mem_ctx, struct pipe_auth_data);
++	result = talloc_zero(mem_ctx, struct pipe_auth_data);
+ 	if (result == NULL) {
+ 		return NT_STATUS_NO_MEMORY;
+ 	}
+@@ -2913,7 +2913,7 @@ NTSTATUS rpccli_schannel_bind_data(TALLOC_CTX *mem_ctx, const char *domain,
+ 		goto fail;
+ 	}
+ 
+-	schannel_auth = talloc(result, struct schannel_state);
++	schannel_auth = talloc_zero(result, struct schannel_state);
+ 	if (schannel_auth == NULL) {
+ 		goto fail;
+ 	}
+@@ -3565,7 +3565,7 @@ NTSTATUS cli_rpc_pipe_open_krb5(struct cli_state *cli,
+ 		return status;
+ 	}
+ 
+-	auth = talloc(result, struct pipe_auth_data);
++	auth = talloc_zero(result, struct pipe_auth_data);
+ 	if (auth == NULL) {
+ 		status = NT_STATUS_NO_MEMORY;
+ 		goto err_out;
+@@ -3636,7 +3636,7 @@ NTSTATUS cli_rpc_pipe_open_spnego_krb5(struct cli_state *cli,
+ 		return status;
+ 	}
+ 
+-	auth = talloc(result, struct pipe_auth_data);
++	auth = talloc_zero(result, struct pipe_auth_data);
+ 	if (auth == NULL) {
+ 		status = NT_STATUS_NO_MEMORY;
+ 		goto err_out;
+@@ -3711,7 +3711,7 @@ NTSTATUS cli_rpc_pipe_open_spnego_ntlmssp(struct cli_state *cli,
+ 		return status;
+ 	}
+ 
+-	auth = talloc(result, struct pipe_auth_data);
++	auth = talloc_zero(result, struct pipe_auth_data);
+ 	if (auth == NULL) {
+ 		status = NT_STATUS_NO_MEMORY;
+ 		goto err_out;
+-- 
+2.14.3
+

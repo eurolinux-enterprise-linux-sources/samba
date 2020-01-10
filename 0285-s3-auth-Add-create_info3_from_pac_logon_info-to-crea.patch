@@ -1,0 +1,146 @@
+From 05647549b384714c5dbf689fb4535318ed3ccbfc Mon Sep 17 00:00:00 2001
+From: Jeremy Allison <jra@samba.org>
+Date: Mon, 16 Jun 2014 23:11:58 -0700
+Subject: [PATCH 285/321] s3: auth: Add create_info3_from_pac_logon_info() to
+ create a new info3 and merge resource group SIDs into it.
+
+Originally written by Richard Sharpe Richard Sharpe <realrichardsharpe@gmail.com>.
+
+Signed-off-by: Jeremy Allison <jra@samba.org>
+Reviewed-by: Richard Sharpe <realrichardsharpe@gmail.com>
+Reviewed-by: Simo Sorce <idra@samba.org>
+(cherry picked from commit db775c68ccbed0252abf092b5cb811e8f5fa9bb6)
+---
+ source3/auth/proto.h       |  5 ++-
+ source3/auth/server_info.c | 78 ++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 82 insertions(+), 1 deletion(-)
+
+diff --git a/source3/auth/proto.h b/source3/auth/proto.h
+index 0ab32a788bb..4335cf887b0 100644
+--- a/source3/auth/proto.h
++++ b/source3/auth/proto.h
+@@ -209,6 +209,7 @@ NTSTATUS auth_winbind_init(void);
+ struct netr_SamInfo2;
+ struct netr_SamInfo3;
+ struct netr_SamInfo6;
++struct PAC_LOGON_INFO;
+ 
+ struct auth_serversupplied_info *make_server_info(TALLOC_CTX *mem_ctx);
+ NTSTATUS serverinfo_to_SamInfo2(struct auth_serversupplied_info *server_info,
+@@ -223,6 +224,9 @@ NTSTATUS serverinfo_to_SamInfo6(struct auth_serversupplied_info *server_info,
+ 				uint8_t *pipe_session_key,
+ 				size_t pipe_session_key_len,
+ 				struct netr_SamInfo6 *sam6);
++NTSTATUS create_info3_from_pac_logon_info(TALLOC_CTX *mem_ctx,
++                                        const struct PAC_LOGON_INFO *logon_info,
++                                        struct netr_SamInfo3 **pp_info3);
+ NTSTATUS samu_to_SamInfo3(TALLOC_CTX *mem_ctx,
+ 			  struct samu *samu,
+ 			  const char *login_server,
+@@ -289,7 +293,6 @@ bool user_in_netgroup(TALLOC_CTX *ctx, const char *user, const char *ngname);
+ bool user_in_list(TALLOC_CTX *ctx, const char *user,const char **list);
+ 
+ /* The following definitions come from auth/user_krb5.c  */
+-struct PAC_LOGON_INFO;
+ NTSTATUS get_user_from_kerberos_info(TALLOC_CTX *mem_ctx,
+ 				     const char *cli_name,
+ 				     const char *princ_name,
+diff --git a/source3/auth/server_info.c b/source3/auth/server_info.c
+index 63b49896069..1fd9317df60 100644
+--- a/source3/auth/server_info.c
++++ b/source3/auth/server_info.c
+@@ -21,6 +21,7 @@
+ #include "auth.h"
+ #include "../lib/crypto/arcfour.h"
+ #include "../librpc/gen_ndr/netlogon.h"
++#include "../librpc/gen_ndr/krb5pac.h"
+ #include "../libcli/security/security.h"
+ #include "rpc_client/util_netlogon.h"
+ #include "nsswitch/libwbclient/wbclient.h"
+@@ -293,6 +294,83 @@ static NTSTATUS group_sids_to_info3(struct netr_SamInfo3 *info3,
+ 	return NT_STATUS_OK;
+ }
+ 
++/*
++ * Merge resource SIDs, if any, into the passed in info3 structure.
++ */
++
++static NTSTATUS merge_resource_sids(const struct PAC_LOGON_INFO *logon_info,
++				struct netr_SamInfo3 *info3)
++{
++	uint32_t i = 0;
++
++	if (!(logon_info->info3.base.user_flags & NETLOGON_RESOURCE_GROUPS)) {
++		return NT_STATUS_OK;
++	}
++
++	/*
++	 * If there are any resource groups (SID Compression) add
++	 * them to the extra sids portion of the info3 in the PAC.
++	 *
++	 * This makes the info3 look like it would if we got the info
++	 * from the DC rather than the PAC.
++	 */
++
++	/*
++	 * Construct a SID for each RID in the list and then append it
++	 * to the info3.
++	 */
++	for (i = 0; i < logon_info->res_groups.count; i++) {
++		NTSTATUS status;
++		struct dom_sid new_sid;
++		uint32_t attributes = logon_info->res_groups.rids[i].attributes;
++
++		sid_compose(&new_sid,
++			logon_info->res_group_dom_sid,
++			logon_info->res_groups.rids[i].rid);
++
++		DEBUG(10, ("Adding SID %s to extra SIDS\n",
++			sid_string_dbg(&new_sid)));
++
++		status = append_netr_SidAttr(info3, &info3->sids,
++					&info3->sidcount,
++					&new_sid,
++					attributes);
++		if (!NT_STATUS_IS_OK(status)) {
++			DEBUG(1, ("failed to append SID %s to extra SIDS: %s\n",
++				sid_string_dbg(&new_sid),
++				nt_errstr(status)));
++			return status;
++		}
++	}
++
++	return NT_STATUS_OK;
++}
++
++/*
++ * Create a copy of an info3 struct from the struct PAC_LOGON_INFO,
++ * then merge resource SIDs, if any, into it. If successful return
++ * the created info3 struct.
++ */
++
++NTSTATUS create_info3_from_pac_logon_info(TALLOC_CTX *mem_ctx,
++					const struct PAC_LOGON_INFO *logon_info,
++					struct netr_SamInfo3 **pp_info3)
++{
++	NTSTATUS status;
++	struct netr_SamInfo3 *info3 = copy_netr_SamInfo3(mem_ctx,
++					&logon_info->info3);
++	if (info3 == NULL) {
++		return NT_STATUS_NO_MEMORY;
++	}
++	status = merge_resource_sids(logon_info, info3);
++	if (!NT_STATUS_IS_OK(status)) {
++		TALLOC_FREE(info3);
++		return status;
++	}
++	*pp_info3 = info3;
++	return NT_STATUS_OK;
++}
++
+ #define RET_NOMEM(ptr) do { \
+ 	if (!ptr) { \
+ 		TALLOC_FREE(info3); \
+-- 
+2.14.3
+

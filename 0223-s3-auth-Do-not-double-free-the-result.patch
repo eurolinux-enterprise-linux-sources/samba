@@ -1,0 +1,30 @@
+From dde2c1ce4ec046e631db59009e0e1fd7148b20ec Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 2 Jul 2014 16:39:22 +0200
+Subject: [PATCH 223/321] s3-auth: Do not double free the result.
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit 3b9d875e184d985b90da0b6578ab4d9428040a01)
+---
+ source3/auth/auth_util.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index 99747764cb3..10917b6c924 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -897,10 +897,6 @@ NTSTATUS make_serverinfo_from_username(TALLOC_CTX *mem_ctx,
+ 	*presult = talloc_steal(mem_ctx, result);
+ done:
+ 	talloc_free(tmp_ctx);
+-	if (!NT_STATUS_IS_OK(status)) {
+-		TALLOC_FREE(result);
+-		return status;
+-	}
+ 
+ 	return status;
+ }
+-- 
+2.14.3
+

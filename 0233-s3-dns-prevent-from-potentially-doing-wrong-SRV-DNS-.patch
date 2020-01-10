@@ -1,0 +1,30 @@
+From 45c241600da7ffd49c8d7ed32b408e92236614b5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Wed, 21 Dec 2011 15:47:35 +0100
+Subject: [PATCH 233/321] s3-dns: prevent from potentially doing wrong SRV DNS
+ lookups.
+
+With an empty sitename we asked for e.g.
+_ldap._tcp.._sites.dc._msdcs.AD.EXAMPLE.COM
+
+Guenther
+---
+ source3/libads/dns.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/libads/dns.c b/source3/libads/dns.c
+index 113e63710bd..3611373cb32 100644
+--- a/source3/libads/dns.c
++++ b/source3/libads/dns.c
+@@ -741,7 +741,7 @@ static NTSTATUS ads_dns_query_internal(TALLOC_CTX *ctx,
+ 				       int *numdcs )
+ {
+ 	char *name;
+-	if (sitename) {
++	if (sitename && strlen(sitename)) {
+ 		name = talloc_asprintf(ctx, "%s._tcp.%s._sites.%s._msdcs.%s",
+ 				       servicename, sitename,
+ 				       dc_pdc_gc_domains, realm);
+-- 
+2.14.3
+

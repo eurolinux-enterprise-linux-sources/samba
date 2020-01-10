@@ -1,0 +1,83 @@
+From 278806655ca883885f758be2ec30f5123882a0ee Mon Sep 17 00:00:00 2001
+From: Gregor Beck <gbeck@sernet.de>
+Date: Fri, 10 Jan 2014 13:56:06 +0100
+Subject: [PATCH 082/321] s3:rpc_server: check verification trailer
+
+Signed-off-by: Gregor Beck <gbeck@sernet.de>
+Reviewed-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+---
+ source3/rpc_server/srv_pipe.c | 43 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 43 insertions(+)
+
+diff --git a/source3/rpc_server/srv_pipe.c b/source3/rpc_server/srv_pipe.c
+index 57386b251d3..3d49d79021b 100644
+--- a/source3/rpc_server/srv_pipe.c
++++ b/source3/rpc_server/srv_pipe.c
+@@ -42,6 +42,7 @@
+ #include "auth.h"
+ #include "ntdomain.h"
+ #include "rpc_server/srv_pipe.h"
++#include "../librpc/ndr/ndr_dcerpc.h"
+ 
+ #undef DBGC_CLASS
+ #define DBGC_CLASS DBGC_RPC_SRV
+@@ -1545,6 +1546,40 @@ static bool api_rpcTNP(struct pipes_struct *p, struct ncacn_packet *pkt,
+ 		       const struct api_struct *api_rpc_cmds, int n_cmds,
+ 		       const struct ndr_syntax_id *syntax);
+ 
++static bool srv_pipe_check_verification_trailer(struct pipes_struct *p,
++						struct ncacn_packet *pkt,
++						struct pipe_rpc_fns *pipe_fns)
++{
++	TALLOC_CTX *frame = talloc_stackframe();
++	struct dcerpc_sec_verification_trailer *vt = NULL;
++	const uint32_t bitmask1 = 0;
++	const struct dcerpc_sec_vt_pcontext pcontext = {
++		.abstract_syntax = pipe_fns->syntax,
++		.transfer_syntax = ndr_transfer_syntax,
++	};
++	const struct dcerpc_sec_vt_header2 header2 =
++	       dcerpc_sec_vt_header2_from_ncacn_packet(pkt);
++	struct ndr_pull *ndr;
++	enum ndr_err_code ndr_err;
++	bool ret = false;
++
++	ndr = ndr_pull_init_blob(&p->in_data.data, frame);
++	if (ndr == NULL) {
++		goto done;
++	}
++
++	ndr_err = ndr_pop_dcerpc_sec_verification_trailer(ndr, frame, &vt);
++	if (!NDR_ERR_CODE_IS_SUCCESS(ndr_err)) {
++		goto done;
++	}
++
++	ret = dcerpc_sec_verification_trailer_check(vt, &bitmask1,
++						    &pcontext, &header2);
++done:
++	TALLOC_FREE(frame);
++	return ret;
++}
++
+ /****************************************************************************
+  Find the correct RPC function to call for this request.
+  If the pipe is authenticated then become the correct UNIX user
+@@ -1581,6 +1616,14 @@ static bool api_pipe_request(struct pipes_struct *p,
+ 	DEBUG(5, ("Requested \\PIPE\\%s\n",
+ 		  get_pipe_name_from_syntax(talloc_tos(), &pipe_fns->syntax)));
+ 
++	if (!srv_pipe_check_verification_trailer(p, pkt, pipe_fns)) {
++		DEBUG(1, ("srv_pipe_check_verification_trailer: failed\n"));
++		setup_fault_pdu(p, NT_STATUS(DCERPC_FAULT_ACCESS_DENIED));
++		data_blob_free(&p->out_data.rdata);
++		TALLOC_FREE(frame);
++		return true;
++	}
++
+ 	if (!become_authenticated_pipe_user(p->session_info)) {
+ 		DEBUG(1, ("Failed to become pipe user!\n"));
+ 		data_blob_free(&p->out_data.rdata);
+-- 
+2.14.3
+

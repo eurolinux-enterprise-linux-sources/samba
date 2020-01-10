@@ -1,0 +1,27 @@
+From b9bd271bcd8f9913e9c0696ccbbc03f981d2b61f Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 15 Nov 2013 17:02:19 +0100
+Subject: [PATCH 243/321] s3-vfs: Make glfs_set_preopened() static.
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+---
+ source3/modules/vfs_glusterfs.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/modules/vfs_glusterfs.c b/source3/modules/vfs_glusterfs.c
+index 4b8da4a2eff..ef505a3fdcc 100644
+--- a/source3/modules/vfs_glusterfs.c
++++ b/source3/modules/vfs_glusterfs.c
+@@ -141,7 +141,7 @@ static struct glfs_preopened {
+ } *glfs_preopened;
+ 
+ 
+-int glfs_set_preopened(const char *volume, glfs_t *fs)
++static int glfs_set_preopened(const char *volume, glfs_t *fs)
+ {
+ 	struct glfs_preopened *entry = NULL;
+ 
+-- 
+2.14.3
+

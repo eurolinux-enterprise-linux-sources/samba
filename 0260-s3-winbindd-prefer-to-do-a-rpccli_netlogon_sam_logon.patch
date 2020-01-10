@@ -1,0 +1,66 @@
+From d73ce8966f8fe3ac1e6282f94eb574c2870b8ae5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Tue, 15 Jul 2014 16:22:15 +0200
+Subject: [PATCH 260/321] s3-winbindd: prefer to do a
+ rpccli_netlogon_sam_logon_ex if we can.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+---
+ source3/winbindd/winbindd_pam.c | 36 +++++++++++++++++++++++++-----------
+ 1 file changed, 25 insertions(+), 11 deletions(-)
+
+diff --git a/source3/winbindd/winbindd_pam.c b/source3/winbindd/winbindd_pam.c
+index 86b352e1576..e838ac690b0 100644
+--- a/source3/winbindd/winbindd_pam.c
++++ b/source3/winbindd/winbindd_pam.c
+@@ -1272,17 +1272,31 @@ static NTSTATUS winbind_samlogon_retry_loop(struct winbindd_domain *domain,
+ 		}
+ 
+ 		if (interactive && username != NULL && password != NULL) {
+-			result = rpccli_netlogon_sam_logon(
+-					netlogon_pipe,
+-					mem_ctx,
+-					logon_parameters,
+-					domainname,
+-					username,
+-					password,
+-					workstation,
+-					3, /* FIXME */
+-					NetlogonInteractiveInformation,
+-					info3);
++			if (domain->can_do_samlogon_ex && domain->can_do_validation6) {
++				result = rpccli_netlogon_sam_logon_ex(
++						netlogon_pipe,
++						mem_ctx,
++						logon_parameters,
++						domainname,
++						username,
++						password,
++						workstation,
++						6,
++						NetlogonInteractiveInformation,
++						info3);
++			} else {
++				result = rpccli_netlogon_sam_logon(
++						netlogon_pipe,
++						mem_ctx,
++						logon_parameters,
++						domainname,
++						username,
++						password,
++						workstation,
++						domain->can_do_validation6 ? 6 : 3,
++						NetlogonInteractiveInformation,
++						info3);
++			}
+ 		} else if (domain->can_do_samlogon_ex && domain->can_do_validation6) {
+ 			result = rpccli_netlogon_sam_network_logon_ex(
+ 					netlogon_pipe,
+-- 
+2.14.3
+

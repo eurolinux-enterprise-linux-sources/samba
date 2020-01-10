@@ -1,0 +1,36 @@
+From 0461b0b15474055c8309933d73c0adb0a2012529 Mon Sep 17 00:00:00 2001
+From: Matt Rogers <mrogers@redhat.com>
+Date: Wed, 12 Nov 2014 17:21:05 +0100
+Subject: [PATCH 270/321] s3-keytab: fix keytab array NULL termination.
+
+Signed-off-by: Matt Rogers <mrogers@redhat.com>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+(cherry picked from commit 0de6799996955fbf8e19ace8c4b7b61f5a262cb5)
+---
+ source3/libads/kerberos_keytab.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/source3/libads/kerberos_keytab.c b/source3/libads/kerberos_keytab.c
+index badce3e79e9..1033842a253 100644
+--- a/source3/libads/kerberos_keytab.c
++++ b/source3/libads/kerberos_keytab.c
+@@ -629,14 +629,13 @@ int ads_keytab_create_default(ADS_STRUCT *ads)
+ 		goto done;
+ 	}
+ 
+-	oldEntries = talloc_array(tmpctx, char *, found);
++	oldEntries = talloc_zero_array(tmpctx, char *, found + 1);
+ 	if (!oldEntries) {
+ 		DEBUG(1, (__location__ ": Failed to allocate space to store "
+ 			  "the old keytab entries (talloc failed?).\n"));
+ 		ret = -1;
+ 		goto done;
+ 	}
+-	memset(oldEntries, '\0', found * sizeof(char *));
+ 
+ 	ret = krb5_kt_start_seq_get(context, keytab, &cursor);
+ 	if (ret == KRB5_KT_END || ret == ENOENT) {
+-- 
+2.14.3
+

@@ -1,0 +1,32 @@
+From 666d8182a19ab609b77ae155a5189e2bcd02c268 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 23 Dec 2014 09:43:03 +0000
+Subject: [PATCH 313/321] s3:winbindd: mark our primary as active_directory if
+ possible
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+---
+ source3/winbindd/winbindd_util.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/source3/winbindd/winbindd_util.c b/source3/winbindd/winbindd_util.c
+index 70a90413362..700076aaeeb 100644
+--- a/source3/winbindd/winbindd_util.c
++++ b/source3/winbindd/winbindd_util.c
+@@ -232,6 +232,12 @@ add_trusted_domain_from_tdc(const struct winbindd_tdc_domain *tdc,
+ 		domain->primary = true;
+ 	}
+ 
++	if (domain->primary) {
++		if (lp_security() == SEC_ADS) {
++			domain->active_directory = true;
++		}
++	}
++
+ 	/* Link to domain list */
+ 	DLIST_ADD_END(_domain_list, domain, struct winbindd_domain *);
+ 
+-- 
+2.14.3
+

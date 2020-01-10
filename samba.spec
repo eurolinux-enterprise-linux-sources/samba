@@ -1,4 +1,4 @@
-%define main_release 46
+%define main_release 51
 
 %define samba_version 3.6.23
 
@@ -48,96 +48,336 @@ Source11: pam_winbind.conf
 # Don't depend on Net::LDAP
 Source999: filter-requires-samba.sh
 
-# Upstream patches
-Patch0: samba-3.6.99-fix_nbt_query_with_many_components.patch
-Patch1: samba-3.6.99-fix_group_expansion_with_nss_templates.patch
-Patch2: samba-3.6.99-fix_group_expansion_in_service_path.patch
-Patch3: samba-3.6.99-fix_memleak_in_printer_list.patch
-Patch4: samba-3.6.99-fix_lookups_with_one_way_trusts.patch
-Patch5: samba-3.6.99-fix_setup_domain_child_logic.patch
-Patch6: samba-3.6.99-fix_force_user_with_security_ads.patch
-Patch7: samba-3.6.99-add_timeout_option_to_smbclient.patch
+Patch0001: 0001-s3-Leave-git-snapshot-mode.patch
+Patch0002: 0002-CVE-2013-4408-librpc-check-for-invalid-frag_len-with.patch
+Patch0003: 0003-CVE-2013-4408-librpc-check-for-invalid-frag_len-with.patch
+Patch0004: 0004-CVE-2013-4408-s3-rpc_client-check-for-invalid-frag_l.patch
+Patch0005: 0005-CVE-2013-4408-s3-rpc_client-verify-frag_len-at-least.patch
+Patch0006: 0006-CVE-2013-4408-s4-dcerpc-check-for-invalid-frag_len-i.patch
+Patch0007: 0007-CVE-2013-4408-s4-dcerpc_smb-check-for-invalid-frag_l.patch
+Patch0008: 0008-CVE-2013-4408-s4-dcerpc_smb2-check-for-invalid-frag_.patch
+Patch0009: 0009-CVE-2013-4408-s4-dcerpc_sock-check-for-invalid-frag_.patch
+Patch0010: 0010-CVE-2013-4408-async_sock-add-some-overflow-detection.patch
+Patch0011: 0011-CVE-2013-4408-s3-util_tsock-add-some-overflow-detect.patch
+Patch0012: 0012-CVE-2013-4408-libcli-util-add-some-size-verification.patch
+Patch0013: 0013-CVE-2013-4408-s3-Ensure-we-always-check-call_id-when.patch
+Patch0014: 0014-CVE-2013-4408-s3-Ensure-LookupSids-replies-arrays-ar.patch
+Patch0015: 0015-CVE-2013-4408-s3-Ensure-LookupNames-replies-arrays-a.patch
+Patch0016: 0016-CVE-2013-4408-s3-Ensure-LookupRids-replies-arrays-ar.patch
+Patch0017: 0017-CVE-2012-6150-Fail-authentication-for-single-group-n.patch
+Patch0018: 0018-VERSION-Bump-version-up-to-3.6.23.patch
+Patch0019: 0019-CVE-2013-4496-s3-samr-Block-attempts-to-crack-passwo.patch
+Patch0020: 0020-CVE-2013-4496-s3-auth-fix-memory-leak-in-the-ACCOUNT.patch
+Patch0021: 0021-CVE-2013-4496-samr-Remove-ChangePasswordUser.patch
+Patch0022: 0022-WHATSNEW-Add-release-notes-for-Samba-3.6.23.patch
+Patch0023: 0023-s3-nmbd-Fix-bug-10633-nmbd-denial-of-service.patch
+Patch0024: 0024-s3-smbd-fix-processing-of-packets-with-invalid-DOS-c.patch
+Patch0025: 0025-CVE-2014-0178-patch-for-3.6.patch
+Patch0026: 0026-CVE-2015-0240-s3-netlogon-Ensure-we-don-t-call-tallo.patch
+Patch0027: 0027-s3-netlogon-Make-sure-we-do-not-deference-a-NULL-poi.patch
+Patch0028: 0028-auth-Make-sure-that-creds_out-is-initialized-with-NU.patch
+Patch0029: 0029-pidl-Recent-Perl-warns-about-defined-var-constructs.patch
+Patch0030: 0030-s4-heimdal-Fix-getopt-with-perl5.patch
+Patch0031: 0031-CVE-2015-5252-s3-smbd-Fix-symlink-verification-file-.patch
+Patch0032: 0032-s3-smbd-fix-a-corner-case-of-the-symlink-verificatio.patch
+Patch0033: 0033-CVE-2015-5296-s3-libsmb-force-signing-when-requiring.patch
+Patch0034: 0034-CVE-2015-5296-s3-libsmb-force-signing-when-requiring.patch
+Patch0035: 0035-CVE-2015-5299-s3-shadow-copy2-fix-missing-access-che.patch
+Patch0036: 0036-CVE-2015-5330-Fix-handling-of-unicode-near-string-en.patch
+Patch0037: 0037-CVE-2015-5330-next_codepoint_handle_ext-don-t-short-.patch
+Patch0038: 0038-CVE-2015-5330-strupper_talloc_n_handle-properly-coun.patch
+Patch0039: 0039-CVE-2015-7560-s3-smbd-Add-refuse_symlink-function-th.patch
+Patch0040: 0040-CVE-2015-7560-s3-smbd-Refuse-to-get-an-ACL-from-a-PO.patch
+Patch0041: 0041-CVE-2015-7560-s3-smbd-Refuse-to-set-an-ACL-from-a-PO.patch
+Patch0042: 0042-CVE-2015-7560-s3-smbd-Refuse-to-set-a-POSIX-ACL-on-a.patch
+Patch0043: 0043-CVE-2015-7560-s3-smbd-Refuse-to-get-a-POSIX-ACL-on-a.patch
+Patch0044: 0044-CVE-2015-7560-s3-smbd-Set-return-values-early-allows.patch
+Patch0045: 0045-CVE-2015-7560-s3-smbd-Silently-return-no-EA-s-availa.patch
+Patch0046: 0046-CVE-2015-7560-s3-smbd-Refuse-to-set-EA-s-on-a-symlin.patch
+Patch0047: 0047-s3-selftest-Fix-building-smbtorture4.patch
+Patch0048: 0048-selftest-Skip-tests-which-do-not-work.patch
+Patch0049: 0049-librpc-ndr-add-ndr_ntlmssp_find_av-helper-function.patch
+Patch0050: 0050-librpc-Add-NDR_PRINT_DEBUGC-to-ndr-print-to-a-debug-.patch
+Patch0051: 0051-librpc-ndr-add-LIBNDR_FLAG_SUBCONTEXT_NO_UNREAD_BYTE.patch
+Patch0052: 0052-dcerpc.idl-add-dcerpc_sec_verification_trailer.patch
+Patch0053: 0053-libndr-moved-the-NDR_-flags-to-have-less-overlap.patch
+Patch0054: 0054-libndr-add-checking-to-all-pull-push-functions-of-ba.patch
+Patch0055: 0055-lib-util-Move-bitmap.c-to-lib-util.patch
+Patch0056: 0056-s3-rpc_client-fill-alloc_hint-with-the-remaining-dat.patch
+Patch0057: 0057-s3-rpc_client-send-a-dcerpc_sec_verification_trailer.patch
+Patch0058: 0058-librpc-ndr-add-ndr_pop_dcerpc_sec_verification_trail.patch
+Patch0059: 0059-librpc-ndr-add-NDR_ERR_INCOMPLETE_BUFFER-and-LIBNDR_.patch
+Patch0060: 0060-librpc-ndr-remember-INCOMPLETE_BUFFER-missing-bytes-.patch
+Patch0061: 0061-librpc-ndr-add-support-for-a-shallow-copy-to-ndr_pul.patch
+Patch0062: 0062-librpc-ndr-add-ndr_pull_append-pop.patch
+Patch0063: 0063-librpc-ndr-add-ndr_syntax_id_-from-to-_string.patch
+Patch0064: 0064-librpc-rpc-add-dcerpc_sec_vt_header2_-from_ncacn_pac.patch
+Patch0065: 0065-librpc-rpc-add-dcerpc_sec_verification_trailer_check.patch
+Patch0066: 0066-torture-ndr-added-support-for-testing-push-functions.patch
+Patch0067: 0067-torture-ndr-fixed-NDR-tests-for-DFS-blobs.patch
+Patch0068: 0068-torture-ndr-fixed-NDR-tests-for-NBT-blobs.patch
+Patch0069: 0069-torture-ndr-fixed-NDR-tests-for-NTLMSSP-blobs.patch
+Patch0070: 0070-torture-drs-fixed-NDR-tests-for-DRS-blobs.patch
+Patch0071: 0071-s4-torture-allow-to-do-ndr-tests-with-flags-not-only.patch
+Patch0072: 0072-s4-torture-make-sure-to-deal-with-the-highest-relati.patch
+Patch0073: 0073-dcerpc.idl-add-a-bitmap-for-dcerpc_pfc_flags.patch
+Patch0074: 0074-dcerpc.idl-add-DCERPC_NCACN_PAYLOAD_OFFSET.patch
+Patch0075: 0075-s3-rpcclient-add-support-for-DCERPC_AUTH_LEVEL_CONNE.patch
+Patch0076: 0076-s3-rpc_client-Add-capabilities-check-for-AES-encrypt.patch
+Patch0077: 0077-s3-selftest-Add-test-for-rpcclient.patch
+Patch0078: 0078-s4-torture-move-samr_ValidatePassword-test-out-of-ma.patch
+Patch0079: 0079-s3-rpc_server-Make-sure-we-switch-always-the-connect.patch
+Patch0080: 0080-s3-rpc_server-Store-the-syntax-in-the-pipes_fn-struc.patch
+Patch0081: 0081-s3-rpc_server-Simplify-api_pipe_request-logic.patch
+Patch0082: 0082-s3-rpc_server-check-verification-trailer.patch
+Patch0083: 0083-s3-rpc_server-Make-it-possible-to-use-more-rpc-excep.patch
+Patch0084: 0084-CVE-2013-4408-s3-Ensure-we-always-check-call_id-when.patch
+Patch0085: 0085-libcli-allow-exclusion-of-netbios-name-in-NTLMV2-blo.patch
+Patch0086: 0086-s3-rpc_server-Fix-a-regression-verifying-the-securit.patch
+Patch0087: 0087-s3-rpc_client-fix-a-crash.patch
+Patch0088: 0088-s3-rpc_client-Fix-updating-netlogon-credentials.patch
+Patch0089: 0089-CVE-2016-2110-s3-ntlmssp-set-and-use-ntlmssp_state-a.patch
+Patch0090: 0090-CVE-2016-2110-s3-ntlmssp-add-ntlmssp3_handle_neg_fla.patch
+Patch0091: 0091-CVE-2016-2110-s3-ntlmssp-let-ntlmssp3_handle_neg_fla.patch
+Patch0092: 0092-CVE-2016-2110-s3-ntlmssp-don-t-allow-a-downgrade-fro.patch
+Patch0093: 0093-CVE-2016-2110-s3-ntlmssp-maintain-a-required_flags-v.patch
+Patch0094: 0094-CVE-2016-2110-s3-ntlmssp-don-t-allow-a-downgrade-fro.patch
+Patch0095: 0095-CVE-2016-2110-auth-ntlmssp-don-t-let-ntlmssp3_handle.patch
+Patch0096: 0096-CVE-2016-2110-s3-ntlmssp-let-ntlmssp3_client_initial.patch
+Patch0097: 0097-CVE-2016-2110-s3-ntlmssp-Change-want_fetures-to-requ.patch
+Patch0098: 0098-CVE-2016-2110-s3-ntlmssp-Fix-downgrade-also-for-the-.patch
+Patch0099: 0099-CVE-2016-2111-s3-rpc_server-netlogon-always-go-throu.patch
+Patch0100: 0100-CVE-2016-2111-s3-rpc_server-netlogon-require-DCERPC_.patch
+Patch0101: 0101-CVE-2016-2111-s4-torture-rpc-fix-rpc.samba3.netlogon.patch
+Patch0102: 0102-CVE-2016-2111-libcli-auth-add-NTLMv2_RESPONSE_verify.patch
+Patch0103: 0103-CVE-2016-2111-s3-rpc_server-netlogon-check-NTLMv2_RE.patch
+Patch0104: 0104-CVE-2016-2111-s4-torture-raw-don-t-use-ntlmv2-for-do.patch
+Patch0105: 0105-CVE-2016-2111-s4-torture-base-don-t-use-ntlmv2-for-d.patch
+Patch0106: 0106-CVE-2016-2111-s3-libsmb-don-t-send-a-raw-NTLMv2-resp.patch
+Patch0107: 0107-CVE-2016-2111-docs-xml-document-the-new-client-NTLMv.patch
+Patch0108: 0108-CVE-2016-2111-docs-xml-add-raw-NTLMv2-auth-defaultin.patch
+Patch0109: 0109-CVE-2016-2111-4.3-loadparm-add-raw-NTLMv2-auth-to-pa.patch
+Patch0110: 0110-CVE-2016-2111-s3-auth-implement-raw-NTLMv2-auth-chec.patch
+Patch0111: 0111-CVE-2016-2111-selftest-Samba3-use-raw-NTLMv2-auth-ye.patch
+Patch0112: 0112-CVE-2016-2111-docs-xml-smbdotconf-default-raw-NTLMv2.patch
+Patch0113: 0113-CVE-2016-2111-s3-selftest-Disable-client-ntlmv2-auth.patch
+Patch0114: 0114-CVE-2016-2112-s3-ntlmssp-Implement-missing-ntlmssp_h.patch
+Patch0115: 0115-CVE-2016-2112-s3-libads-make-sure-we-detect-downgrad.patch
+Patch0116: 0116-CVE-2016-2112-winbindd-Change-value-of-ldap-sasl-wra.patch
+Patch0117: 0117-CVE-2016-2115-docs-xml-add-client-ipc-signing-option.patch
+Patch0118: 0118-CVE-2016-2115-s3-Use-lp_client_ipc_signing-if-we-are.patch
+Patch0119: 0119-CVE-2016-2115-s3-param-pick-up-s4-option-winbind-sea.patch
+Patch0120: 0120-CVE-2016-2115-winbindd-Do-not-make-anonymous-connect.patch
+Patch0121: 0121-CVE-2016-2118-s3-rpcclient-change-the-default-auth-l.patch
+Patch0122: 0122-CVE-2016-2118-s4-librpc-use-integrity-by-default-for.patch
+Patch0123: 0123-CVE-2016-2118-docs-xml-add-allow-dcerpc-auth-level-c.patch
+Patch0124: 0124-CVE-2016-2118-param-add-allow-dcerpc-auth-level-conn.patch
+Patch0125: 0125-CVE-2016-2118-s3-rpc_server-make-use-of-allow-dcerpc.patch
+Patch0126: 0126-CVE-2016-2118-s3-rpc_server-samr-lsa-netlogon-reject.patch
+Patch0127: 0127-CVE-2016-2118-s3-selftest-The-lsa-tests-which-use-co.patch
+Patch0128: 0128-CVE-2016-2118-s3-rpc_server-epmapper-echo-allow-DCER.patch
+Patch0129: 0129-CVE-2016-2118-docs-xml-param-default-allow-dcerpc-au.patch
+Patch0130: 0130-CVE-2016-2118-s3-rpc_server-samr-allow-_samr_Validat.patch
+Patch0131: 0131-CVE-2015-5370-dcerpc.idl-add-DCERPC_-NCACN_PAYLOAD-F.patch
+Patch0132: 0132-CVE-2015-5370-librpc-rpc-simplify-and-harden-dcerpc_.patch
+Patch0133: 0133-CVE-2015-5370-s3-librpc-rpc-don-t-call-dcerpc_pull_a.patch
+Patch0134: 0134-CVE-2015-5370-librpc-rpc-add-a-dcerpc_verify_ncacn_p.patch
+Patch0135: 0135-CVE-2015-5370-s3-rpc_client-move-AS-U-hack-to-the-to.patch
+Patch0136: 0136-CVE-2015-5370-s3-rpc_client-remove-useless-frag_leng.patch
+Patch0137: 0137-CVE-2015-5370-s4-rpc_server-no-authentication-is-ind.patch
+Patch0138: 0138-CVE-2015-5370-s4-librpc-rpc-check-pkt-auth_length-be.patch
+Patch0139: 0139-CVE-2015-5370-librpc-rpc-don-t-allow-pkt-auth_length.patch
+Patch0140: 0140-CVE-2015-5370-s3-librpc-rpc-remove-auth-trailer-and-.patch
+Patch0141: 0141-CVE-2015-5370-s3-librpc-rpc-let-dcerpc_check_auth-au.patch
+Patch0142: 0142-CVE-2015-5370-s3-rpc_client-make-use-of-dcerpc_pull_.patch
+Patch0143: 0143-CVE-2015-5370-s3-rpc_client-make-use-of-dcerpc_verif.patch
+Patch0144: 0144-CVE-2015-5370-s3-rpc_client-protect-rpc_api_pipe_got.patch
+Patch0145: 0145-CVE-2015-5370-s3-rpc_client-verify-auth_-type-level-.patch
+Patch0146: 0146-CVE-2015-5370-s3-rpc_server-make-use-of-dcerpc_pull_.patch
+Patch0147: 0147-CVE-2015-5370-s3-rpc_server-let-a-failing-sec_verifi.patch
+Patch0148: 0148-CVE-2015-5370-s3-rpc_server-don-t-ignore-failures-of.patch
+Patch0149: 0149-CVE-2015-5370-s3-rpc_server-don-t-allow-auth3-if-the.patch
+Patch0150: 0150-CVE-2015-5370-s3-rpc_server-let-a-failing-auth3-mark.patch
+Patch0151: 0151-CVE-2015-5370-s3-rpc_server-make-sure-auth_level-isn.patch
+Patch0152: 0152-CVE-2015-5370-s3-rpc_server-ensure-that-the-message-.patch
+Patch0153: 0153-CVE-2015-5370-s3-rpc_server-use-alter-instead-of-bin.patch
+Patch0154: 0154-CVE-2015-5370-s3-rpc_server-verify-presentation-cont.patch
+Patch0155: 0155-CVE-2015-5370-s3-rpc_server-make-use-of-dcerpc_verif.patch
+Patch0156: 0156-CVE-2015-5370-s3-rpc_server-disconnect-the-connectio.patch
+Patch0157: 0157-CVE-2015-5370-s3-rpc_server-let-a-failing-BIND-mark-.patch
+Patch0158: 0158-CVE-2015-5370-s3-rpc_server-use-DCERPC_NCA_S_PROTO_E.patch
+Patch0159: 0159-CVE-2015-5370-s3-librpc-rpc-remove-unused-dcerpc_pul.patch
+Patch0160: 0160-CVE-2015-5370-s3-rpc_server-check-the-transfer-synta.patch
+Patch0161: 0161-CVE-2015-5370-s3-rpc_server-don-t-allow-an-existing-.patch
+Patch0162: 0162-CVE-2015-5370-s3-rpc_client-pass-struct-pipe_auth_da.patch
+Patch0163: 0163-CVE-2015-5370-s3-librpc-rpc-add-auth_context_id-to-s.patch
+Patch0164: 0164-CVE-2015-5370-s3-rpc_client-make-use-of-pipe_auth_da.patch
+Patch0165: 0165-CVE-2015-5370-s3-rpc_server-make-use-of-pipe_auth_da.patch
+Patch0166: 0166-CVE-2015-5370-s3-librpc-rpc-make-use-of-auth-auth_co.patch
+Patch0167: 0167-CVE-2015-5370-s3-librpc-rpc-verify-auth_context_id-i.patch
+Patch0168: 0168-CVE-2015-5370-s3-rpc_client-verify-auth_context_id-i.patch
+Patch0169: 0169-CVE-2015-5370-s3-rpc_server-verify-auth_context_id-i.patch
+Patch0170: 0170-CVE-2015-5370-s3-rpc_client-disconnect-connection-on.patch
+Patch0171: 0171-s3-libsmb-Allow-SESSION-KEY-setup-without-signing.patch
+Patch0172: 0172-libcli-smb-s-FLAGS2_UNKNOWN_BIT4-FLAGS2_SMB_SECURITY.patch
+Patch0173: 0173-s3-smbd-echo-FLAGS2_SMB_SECURITY_SIGNATURES-and-the-.patch
+Patch0174: 0174-s3-smb_signing-add-support-for-easier-negotiation-of.patch
+Patch0175: 0175-s3-smbd-make-use-of-better-SMB-signing-negotiation.patch
+Patch0176: 0176-CVE-2016-2125-s3-gse-avoid-using-GSS_C_DELEG_FLAG.patch
+Patch0177: 0177-CVE-2016-2126-auth-kerberos-only-allow-known-checksu.patch
+Patch0178: 0178-CVE-2017-7494-Refuse-to-open-pipe-names-with-inside.patch
+Patch0179: 0179-s3-smbd-SMB-2-3-.-Ensure-a-or-can-t-be-found-anywher.patch
+Patch0180: 0180-s3-smbd-SMB2-fix-SMB2_SEARCH-when-searching-non-wild.patch
+Patch0181: 0181-CVE-2017-2619-s3-smbd-re-open-directory-after-dptr_C.patch
+Patch0182: 0182-s3-vfs-dirsort-doesn-t-handle-opendir-of-.-correctly.patch
+Patch0183: 0183-s3-VFS-vfs_streams_xattr.c-Make-streams_xattr_open-s.patch
+Patch0184: 0184-vfs_streams_xattr-use-fsp-not-base_fsp.patch
+Patch0185: 0185-s3-smbd-Create-wrapper-function-for-OpenDir-in-prepa.patch
+Patch0186: 0186-s3-smbd-Opendir_internal-early-return-if-SMB_VFS_OPE.patch
+Patch0187: 0187-s3-smbd-Create-and-use-open_dir_safely-.-Use-from-Op.patch
+Patch0188: 0188-s3-smbd-OpenDir_fsp-use-early-returns.patch
+Patch0189: 0189-s3-smbd-OpenDir_fsp-Fix-memory-leak-on-error.patch
+Patch0190: 0190-s3-smbd-Move-the-reference-counting-and-destructor-s.patch
+Patch0191: 0191-s3-smbd-Correctly-fallback-to-open_dir_safely-if-FDO.patch
+Patch0192: 0192-s3-smbd-Remove-O_NOFOLLOW-guards.-We-insist-on-O_NOF.patch
+Patch0193: 0193-s3-smbd-Move-special-handling-of-symlink-errno-s-int.patch
+Patch0194: 0194-s3-smbd-Add-the-core-functions-to-prevent-symlink-op.patch
+Patch0195: 0195-s3-smbd-Use-the-new-non_widelink_open-function.patch
+Patch0196: 0196-s3-smbd-Fix-incorrect-logic-exposed-by-fix-for-the-s.patch
+Patch0197: 0197-s3-Test-for-CVE-2017-2619-regression-with-follow-sym.patch
+Patch0198: 0198-s3-Fixup-test-for-CVE-2017-2619-regression-with-foll.patch
+Patch0199: 0199-s3-smbd-Fix-follow-symlink-no-regression-part-2.patch
+Patch0200: 0200-s3-smbd-Fix-follow-symlink-no-regression-part-2.patch
+Patch0201: 0201-s3-Test-for-CVE-2017-2619-regression-with-follow-sym.patch
+Patch0202: 0202-s3-smbd-fix-regression-with-non-wide-symlinks-to-dir.patch
+Patch0203: 0203-CVE-2017-12150-s3-lib-get_cmdline_auth_info_signing_.patch
+Patch0204: 0204-CVE-2017-12150-libgpo-make-use-of-Required-for-SMB-s.patch
+Patch0205: 0205-CVE-2017-12150-s3-libsmb-only-fallback-to-anonymous-.patch
+Patch0206: 0206-CVE-2017-12163-s3-smbd-Prevent-client-short-SMB1-wri.patch
+Patch0207: 0207-CVE-2018-1050-s3-RPC-spoolss-server.-Protect-against.patch
+Patch0208: 0208-librpc-nbt-increase-MAX_COMPONENTS-limit-for-nbt_nam.patch
+Patch0209: 0209-s3-lib-Add-grpname-to-talloc_sub_specified.patch
+Patch0210: 0210-s3-winbind-Pass-the-group-name-to-fillup_pw_field.patch
+Patch0211: 0211-s3-winbind-Improve-performance-of-wb_fill_pwent_sid2.patch
+Patch0212: 0212-s3-lib-Fix-G-substitution-for-domain-users-in-smbd.patch
+Patch0213: 0213-s3-printing-Fix-obvious-memory-leak-in-printer_list_.patch
+Patch0214: 0214-s3-winbindd-avoid-directly-asking-a-trusted-domain-i.patch
+Patch0215: 0215-s3-winbind-Move-setup_domain_child-into-add_trusted_.patch
+Patch0216: 0216-s3-lib-Add-winbind_lookup_usersids.patch
+Patch0217: 0217-s3-auth-Add-passwd_to_SamInfo3.patch
+Patch0218: 0218-s3-auth-Pass-talloc-context-to-make_server_info_pw.patch
+Patch0219: 0219-s3-auth-Use-passwd_to_SamInfo3.patch
+Patch0220: 0220-s3-auth-Pass-mem_ctx-to-make_server_info_sam.patch
+Patch0221: 0221-s3-auth-Pass-mem_ctx-to-auth_check_ntlm_password.patch
+Patch0222: 0222-Allocate-server_info-on-the-correct-memory-context.patch
+Patch0223: 0223-s3-auth-Do-not-double-free-the-result.patch
+Patch0224: 0224-s3-auth-Fix-support-for-security-share-in-passwd_to_.patch
+Patch0225: 0225-Add-new-timeout-command-and-t-option-to-smbclient-to.patch
+Patch0226: 0226-nsswitch-Use-var-run-winbindd-as-socket-dir.patch
+Patch0227: 0227-s3-winbindd-Use-instead-of-x-in-getent-group-output.patch
+Patch0228: 0228-s3-smbd-Detect-broken-inotify.patch
+Patch0229: 0229-s3-winbindd-Change-log-level-for-idmap-module-regist.patch
+Patch0230: 0230-docs-Update-wbinfo-manpage-to-match-options.patch
+Patch0231: 0231-docs-Document-Services-for-Unix-nss_info-ldap-schema.patch
+Patch0232: 0232-s3-docs-some-corrections-for-wbinfo.patch
+Patch0233: 0233-s3-dns-prevent-from-potentially-doing-wrong-SRV-DNS-.patch
+Patch0234: 0234-nsswitch-disable-HAVE_PAM_RADIO_TYPE-handling-until-.patch
+Patch0235: 0235-docs-point-out-side-effects-of-global-valid-users-se.patch
+Patch0236: 0236-s3-winbind-Use-strlcpy-to-avoid-log-entry.patch
+Patch0237: 0237-vfs_glusterfs-Samba-VFS-module-for-glusterfs.patch
+Patch0238: 0238-vfs_glusterfs-New-file-creation-fix.patch
+Patch0239: 0239-vfs_glusterfs-Volume-capacity-reported-to-Windows-is.patch
+Patch0240: 0240-vfs_glusterfs-Implement-proper-mashalling-unmarshall.patch
+Patch0241: 0241-vfs_glusterfs-Fix-excessive-debug-output-from-vfs_gl.patch
+Patch0242: 0242-vfs-Fix-some-build-warnings-in-glusterfs.patch
+Patch0243: 0243-s3-vfs-Make-glfs_set_preopened-static.patch
+Patch0244: 0244-vfs_glusterfs-Enable-per-client-log-file.patch
+Patch0245: 0245-vfs-glusterfs-in-case-atime-is-not-passed-set-it-to-.patch
+Patch0246: 0246-s3-libsmbclient-Always-initialize-globals.patch
+Patch0247: 0247-s3-kerberos-remove-print_kdc_line-completely.patch
+Patch0248: 0248-s3-kerberos-remove-unused-kdc_name-from-create_local.patch
+Patch0249: 0249-s3-kerberos-make-ipv6-support-for-generated-krb5-con.patch
+Patch0250: 0250-s3-libads-Pass-a-struct-sockaddr_storage-to-cldap-ro.patch
+Patch0251: 0251-s3-libads-allow-ads_try_connect-to-re-use-a-resolved.patch
+Patch0252: 0252-s3-rpc_client-return-info3-in-rpccli_netlogon_passwo.patch
+Patch0253: 0253-s3-winbindd-call-interactive-samlogon-via-rpccli_net.patch
+Patch0254: 0254-s3-winbindd-add-wcache_query_user_fullname.patch
+Patch0255: 0255-s3-winbindd-use-wcache_query_user_fullname-after-ins.patch
+Patch0256: 0256-samlogon_cache-use-a-talloc_stackframe-inside-netsam.patch
+Patch0257: 0257-samlogon_cache-avoid-overwriting-info3-base.full_nam.patch
+Patch0258: 0258-s3-winbind-Don-t-set-the-gecos-field-to-NULL.patch
+Patch0259: 0259-s3-rpc_client-add-rpccli_netlogon_sam_logon_ex.patch
+Patch0260: 0260-s3-winbindd-prefer-to-do-a-rpccli_netlogon_sam_logon.patch
+Patch0261: 0261-Reset-netlogon-pipe-for-interactive-samlogon_ex.patch
+Patch0262: 0262-smbd-Fix-regression-for-the-dropbox-case.patch
+Patch0263: 0263-smbd-change-flag-name-from-UCF_CREATING_FILE-to-UCF_.patch
+Patch0264: 0264-smbd-Always-use-UCF_PREP_CREATEFILE-for-filename_con.patch
+Patch0265: 0265-s3-spoolss-Make-it-easier-to-manipulate-the-returned.patch
+Patch0266: 0266-printing-split-out-printer-DN-and-GUID-retrieval.patch
+Patch0267: 0267-printing-add-nt_printer_guid_retrieve-helper.patch
+Patch0268: 0268-printing-rework-nt_printer_guid_store-to-return-erro.patch
+Patch0269: 0269-spoolss-retrieve-published-printer-GUID-if-not-in-re.patch
+Patch0270: 0270-s3-keytab-fix-keytab-array-NULL-termination.patch
+Patch0271: 0271-printing-traverse_read-the-printer-list-for-share-up.patch
+Patch0272: 0272-printing-only-reload-printer-shares-on-client-enum.patch
+Patch0273: 0273-printing-reload-printer_list.tdb-from-in-memory-list.patch
+Patch0274: 0274-printing-remove-pcap_cache_add.patch
+Patch0275: 0275-printing-return-last-change-time-with-pcap_cache_loa.patch
+Patch0276: 0276-smbd-only-reprocess-printer_list.tdb-if-it-changed.patch
+Patch0277: 0277-printing-reload-printer-shares-on-OpenPrinter.patch
+Patch0278: 0278-s3-libsmb-don-t-pass-cli-called.name-to-NTLMv2_gener.patch
+Patch0279: 0279-s4-libcli-do-not-use-netbios-name-in-NTLMv2-blobs-w-.patch
+Patch0280: 0280-doc-xml-Add-sharesec-reference-to-access-based-share.patch
+Patch0281: 0281-s3-winbind-grent-don-t-stop-group-enumeration-when-a.patch
+Patch0282: 0282-shadow_copy2-implement-disk_free.patch
+Patch0283: 0283-s3-auth-Add-some-const-to-the-struct-netr_SamInfo3-a.patch
+Patch0284: 0284-s3-auth-Change-make_server_info_info3-to-take-a-cons.patch
+Patch0285: 0285-s3-auth-Add-create_info3_from_pac_logon_info-to-crea.patch
+Patch0286: 0286-s3-winbind-Merge-resource-groups-from-a-trusted-PAC-.patch
+Patch0287: 0287-s3-winbind-Fix-chached-user-group-lookup-of-trusted-.patch
+Patch0288: 0288-s3-passdb-Fix-force-user-with-winbind-default-domain.patch
+Patch0289: 0289-rpcclient-Fix-the-timeout-command.patch
+Patch0290: 0290-s3-passdb-Respect-LOOKUP_NAME_GROUP-flag-in-sid-look.patch
+Patch0291: 0291-pam_winbind-Fix-a-segfault-if-initialization-fails.patch
+Patch0292: 0292-smbd-Properly-initialize-mangle_hash.patch
+Patch0293: 0293-docs-Documents-length-limitations-for-NetBIOS-name.patch
+Patch0294: 0294-s3-auth-Pass-nt_username-to-check_account.patch
+Patch0295: 0295-s3-auth-Fix-map-to-guest-Bad-Uid-support.patch
+Patch0296: 0296-s3-auch-Fix-secuirty-server-share-access.patch
+Patch0297: 0297-spoolss-purge-the-printer-name-cache-on-name-change.patch
+Patch0298: 0298-net-add-option-no-dns-updates-for-net-ads-join.patch
+Patch0299: 0299-security-Add-Asserted-Identity-sids-S-1-18.patch
+Patch0300: 0300-s3-util-add-helper-functions-to-deal-with-the-S-1-18.patch
+Patch0301: 0301-s3-util-skip-S-1-18-sids-in-token-generaion-in-sid_a.patch
+Patch0302: 0302-winbind3-Fix-CID-241468-Resource-leak.patch
+Patch0303: 0303-s3-winbind-Fix-memory-leak-with-each-cached-credenti.patch
+Patch0304: 0304-s3-winbind-Fix-memory-leak-in-ad_idmap_cached_connec.patch
+Patch0305: 0305-s3-libsmb-Correctly-initialize-the-list-head-when-ke.patch
+Patch0306: 0306-s3-winbind-Do-not-return-NO_MEMORY-if-we-have-an-emp.patch
+Patch0307: 0307-s3-spoolss-Remove-printer-from-registry-if-it-is-unp.patch
+Patch0308: 0308-s3-rpc_server-Remove-obsolete-process_creds-boolean-.patch
+Patch0309: 0309-smbd-Streamline-get_ea_names_from_file.patch
+Patch0310: 0310-lib-util-charset-Optimize-next_codepoint-for-the-asc.patch
+Patch0311: 0311-s3-vfs-Only-walk-the-directory-once-in-open_and_sort.patch
+Patch0312: 0312-winbindd-introduce-add_trusted_domain_from_tdc.patch
+Patch0313: 0313-s3-winbindd-mark-our-primary-as-active_directory-if-.patch
+Patch0314: 0314-winbindd-initialize-foreign-domain-as-AD-based-on-tr.patch
+Patch0315: 0315-winbindd-return-trust-parameters-when-listing-trusts.patch
+Patch0316: 0316-s3-winbindd-Only-fallback-to-samlogon-if-we-are-the-.patch
+Patch0317: 0317-s3-winbind-Add-winbind-request-timeout-option.patch
+Patch0318: 0318-s3-winbind-Correctly-initialize-pointers-in-_wbint_Q.patch
+Patch0319: 0319-s3-smbd-Fix-spnego-session-setup.patch
+Patch0320: 0320-winbindd-Initialize-the-domain-groups-member.patch
+Patch0321: 0321-s3-rpc_client-Make-sure-that-the-memory-is-initializ.patch
+Patch0322: 0322-s3-libsmb-Use-talloc-to-avoid-memory-leaks-in-cli_ne.patch
+Patch0323: 0323-source3-winbindd-winbindd_util.c-fix-stackframe-leak.patch
+Patch0324: 0324-s3-winbindd-fix-endless-forest-trust-scan.patch
 
-# Additional Red Hat patches
-Patch100: samba-3.2.0pre1-pipedir.patch
-Patch101: samba-3.2.0pre1-grouppwd.patch
-Patch102: samba-3.2.5-inotify.patch
-Patch103: samba-3.5.11-idmapdebug.patch
-Patch104: samba-3.5.11-docs.patch
-Patch105: samba-3.5.11-nss_info_doc.patch
-Patch106: samba-3.5.11-wbinfo_manpage.patch
-Patch107: samba-3.5.12-dns.patch
-Patch108: samba-3.5.12-pam_radio_type.patch
-Patch109: samba-3.6.18-fix_net_ads_join_segfault.patch
-Patch110: samba-3.6.19-valid_users_doc.patch
-Patch111: samba-3.6.23-gecos.patch
-Patch112: samba-3.6.23-glusterfs.patch
-Patch113: samba-3.6.23-libsmbclient.patch
-Patch114: samba-3.6.23-fix_libads_krb5_ipv6.patch
-Patch115: samba-CVE-2014-0244.patch
-Patch116: samba-CVE-2014-3493.patch
-Patch117: samba-3.6.26-smb2_case_sensitive.patch
-Patch118: samba-3.6.99-fix_gecos_interactive.patch
-Patch119: samba-3.6.99-fix_dropbox_share.patch
-Patch120: samba-3.6.99-add_spoolss_os_version.patch
-Patch121: CVE-2015-0240-3.6.patch
-Patch122: samba-3.6.99-nt_printer_publish_guid.patch
-Patch123: samba-3.6.99-fix_keytab_null_termination.patch
-Patch124: samba-3.6.99-fix_printcap_cpu_utilization.patch
-Patch125: samba-3.6.99-fix_smbclient_ntlmv2_auth.patch
-Patch126: samba-3.6.99-fix_smb_conf_doc.patch
-Patch127: samba-3.6.99-bug-1117059.patch
-Patch128: samba-3.6.99-bug-1192211.patch
-Patch129: samba-3.6.99-fix_usergroup_cache_lookup.patch
-Patch130: samba-3.6.99-fix_force_user_winbind_default_domain.patch
-Patch131: samba-3.6.99-fix_rpcclient_timeout_command.patch
-Patch132: samba-3.6.99-fix_force_group.patch
-Patch133: samba-3.6.99-fix_pam_winbind_parsing_segfault.patch
-Patch134: samba-3.6.99-fix_mangling_hash_segfault.patch
-Patch135: samba-3.6.99-doc_netbios_name_length_limit.patch
-Patch136: samba-3.6.99-fix_map_to_guest_bad_uid.patch
-Patch137: samba-3.6.99-fix_security_server_share_access.patch
-Patch138: samba-3.6.99-fix_stale_printer_entries_on_rename.patch
-Patch139: CVE-2015-5299-v3-6-bso11529.patch
-Patch140: CVE-2015-5296-v3-6-bso11536.patch
-Patch141: CVE-2015-5252-v3-6-bso11395.patch
-Patch142: CVE-2015-5330-v3-6-bso11599.patch
-Patch144: samba-3.6.99-net_ads_join_no_dns_updates.patch
-Patch145: samba-3.6.99-asserted_identity_sid-S-1-18-1.patch
-#Patch146: samba-3.6.99-clidfs.patch
-Patch147: CVE-2015-7560-v3-6.patch
-Patch148: samba-3.6.99-fix_symlink_verification.patch
-Patch149: CVE-preparation-v3-6.patch
-Patch150: CVE-2016-2110-v3-6.patch
-Patch151: CVE-2016-2111-v3-6.patch
-Patch152: CVE-2016-2112-v3-6.patch
-Patch153: CVE-2016-2115-v3-6.patch
-Patch154: CVE-2016-2118-v3-6.patch
-Patch155: CVE-2015-5370-v3-6.patch
-Patch156: samba-3.6.99-fix_winbind_cache_memory_leak.patch
-Patch157: samba-3.6.99-fix_memleak_winbind_cached_creds.patch
-Patch158: samba-3.6.99-idmap_ad_memleak.patch
-Patch159: samba-3.6.99-libsmb_fix_dfs_connections.patch
-Patch160: samba-3.6.99-2110-ntlmssp-session-setup-nas.patch
-Patch161: samba-3.6.99-fix_rpc_query_user_list.patch
-Patch162: samba-3.6.99-nt_printer_unpublish_fix.patch
-Patch163: CVE-2016-2126-v3.6.patch
-Patch164: CVE-2016-2125-v3.6.patch
-Patch165: samba-3.6.99-fix_member_auth_after_changed_secret.patch
-Patch166: samba-3.6.99-fix_dirsort_ea-support.patch
-Patch167: CVE-2017-7494-v3-6.patch
-Patch168: samba-3.6.99-winbind_fix_trusted_domain_handling.patch
-Patch169: CVE-2017-2619.patch
-Patch170: CVE-2017-12150-v3-6.patch
-Patch171: CVE-2017-12163.patch
-Patch172: samba-3.6.99-fix_CVE-2017-2619_regression.patch
-
-Patch190: doc-update.patch
-
+Patch500: doc-update.patch
 # This is a backported patch to use epoll on RHEL. We will maintain this
 # patch just in our package. It will not be part of a 3.6 release cause it require
 # at least libtevent 0.9.18.
-Patch200: samba-3.6.x-winbind_tevent_poll.patch
+Patch501: samba-3.6.x-winbind_tevent_poll.patch
 
 Requires(pre): samba-common = %{epoch}:%{samba_version}-%{release}
 Requires(pre): samba-winbind-clients = %{epoch}:%{samba_version}-%{release}
@@ -146,8 +386,23 @@ Requires: logrotate >= 0:3.4
 BuildRoot: %{_tmppath}/%{name}-%{samba_version}-%{release}-root
 Requires(post): /sbin/chkconfig, /sbin/service
 Requires(preun): /sbin/chkconfig, /sbin/service
-BuildRequires: pam-devel, readline-devel, ncurses-devel, libacl-devel, krb5-devel, openldap-devel, openssl-devel, cups-devel, ctdb-devel
-BuildRequires: autoconf, gawk, popt-devel, gtk2-devel, libcap-devel, libuuid-devel
+BuildRequires: autoconf
+BuildRequires: automake
+BuildRequires: ctdb-devel
+BuildRequires: cups-devel
+BuildRequires: gawk
+BuildRequires: gtk2-devel
+BuildRequires: krb5-devel
+BuildRequires: libacl-devel
+BuildRequires: libcap-devel
+BuildRequires: libuuid-devel
+BuildRequires: m4
+BuildRequires: ncurses-devel
+BuildRequires: openldap-devel
+BuildRequires: openssl-devel
+BuildRequires: pam-devel
+BuildRequires: popt-devel
+BuildRequires: readline-devel
 BuildRequires: libtalloc-devel >= %{talloc_version}
 BuildRequires: libtevent-devel >= %{tevent_version}
 BuildRequires: libtdb-devel >= %{tdb_version}
@@ -332,92 +587,334 @@ cp %{SOURCE9} packaging/Fedora/
 cp %{SOURCE10} packaging/Fedora/
 cp %{SOURCE11} packaging/Fedora/
 
-# Upstream patches
-%patch0 -p1 -b .samba-3.6.99-fix_nbt_query_with_many_components.patch
-%patch1 -p1 -b .samba-3.6.99-fix_group_expansion_with_nss_templates.patch
-%patch2 -p1 -b .samba-3.6.99-fix_group_expansion_in_service_path.patch
-%patch3 -p1 -b .samba-3.6.99-fix_memleak_in_printer_list.patch
-%patch4 -p1 -b .samba-3.6.99-fix_lookups_with_one_way_trusts.patch
-%patch5 -p1 -b .samba-3.6.99-fix_setup_domain_child_logic.patch
-%patch6 -p1 -b .samba-3.6.99-fix_force_user_with_security_ads.patch
-%patch7 -p1 -b .samba-3.6.99-add_timeout_option_to_smbclient.patch
 
-# Additional Red Hat patches
-%patch100 -p1 -b .samba-3.2.0pre1-pipedir.patch
-%patch101 -p1 -b .samba-3.2.0pre1-grouppwd.patch
-%patch102 -p1 -b .samba-3.2.5-inotify.patch
-%patch103 -p1 -b .samba-3.5.11-idmapdebug.patch
-%patch104 -p1 -b .samba-3.5.11-docs.patch
-%patch105 -p1 -b .samba-3.5.11-nss_info_doc.patch
-%patch106 -p1 -b .samba-3.5.11-wbinfo_manpage.patch
-%patch107 -p1 -b .samba-3.5.12-dns.patch
-%patch108 -p1 -b .samba-3.5.12-pam_radio_type.patch
-%patch109 -p1 -b .samba-3.6.18-fix_net_ads_join_segfault.patch
-%patch110 -p1 -b .samba-3.6.19-valid_users_doc.patch
-%patch111 -p1 -b .samba-3.6.23-gecos.patch
-%patch112 -p1 -b .samba-3.6.23-glusterfs.patch
-%patch113 -p1 -b .samba-3.6.23-libsmbclient.patch
-%patch114 -p1 -b .samba-3.6.23-fix_libads_krb5_ipv6.patch
-%patch115 -p1 -b .samba-CVE-2014-0244.patch
-%patch116 -p1 -b .samba-CVE-2014-3493.patch
-%patch117 -p1 -b .samba-3.6.26-smb2_case_sensitive.patch
-%patch118 -p1 -b .samba-3.6.99-fix_gecos_interactive.patch
-%patch119 -p1 -b .samba-3.6.99-fix_dropbox_share.patch
-%patch120 -p1 -b .samba-3.6.99-add_spoolss_os_version.patch
-%patch121 -p1 -b .CVE-2015-0240-3.6.patch
-%patch122 -p1 -b .samba-3.6.99-nt_printer_publish_guid.patch
-%patch123 -p1 -b .samba-3.6.99-fix_keytab_null_termination.patch
-%patch124 -p1 -b .samba-3.6.99-fix_printcap_cpu_utilization.patch
-%patch125 -p1 -b .samba-3.6.99-fix_smbclient_ntlmv2_auth.patch
-%patch126 -p1 -b .samba-3.6.99-fix_smb_conf_doc.patch
-%patch127 -p1 -b .samba-3.6.99-bug-1117059.patch
-%patch128 -p1 -b .samba-3.6.99-bug-1192211.patch
-%patch129 -p1 -b .samba-3.6.99-fix_usergroup_cache_lookup.patch
-%patch130 -p1 -b .samba-3.6.99-fix_force_user_winbind_default_domain.patch
-%patch131 -p1 -b .samba-3.6.99-fix_rpcclient_timeout_command.patch
-%patch132 -p1 -b .samba-3.6.99-fix_force_group.patch
-%patch133 -p1 -b .samba-3.6.99-fix_pam_winbind_parsing_segfault.patch
-%patch134 -p1 -b .samba-3.6.99-fix_mangling_hash_segfault.patch
-%patch135 -p1 -b .samba-3.6.99-doc_netbios_name_length_limit.patch
-%patch136 -p1 -b .samba-3.6.99-fix_map_to_guest_bad_uid.patch
-%patch137 -p1 -b .samba-3.6.99-fix_security_server_share_access.patch
-%patch138 -p1 -b .samba-3.6.99-fix_stale_printer_entries_on_rename.patch
-%patch139 -p1 -b .CVE-2015-5299-v3-6-bso11529.patch
-%patch140 -p1 -b .CVE-2015-5296-v3-6-bso11536.patch
-%patch141 -p1 -b .CVE-2015-5252-v3-6-bso11395.patch
-%patch142 -p1 -b .CVE-2015-5330-v3-6-bso11599.patch
-%patch144 -p1 -b .samba-3.6.99-net_ads_join_no_dns_updates.patch
-%patch145 -p1 -b .samba-3.6.99-asserted_identity_sid-S-1-18-1.patch
-#%patch146 -p1 -b .samba-3.6.99-clidfs.patch
-%patch147 -p1 -b .CVE-2015-7560-v3-6.patch
-%patch148 -p1 -b .samba-3.6.99-fix_symlink_verification.patch
-%patch149 -p1 -b .CVE-preparation-v3-6.patch
-%patch150 -p1 -b .CVE-2016-2110-v3-6.patch
-%patch151 -p1 -b .CVE-2016-2111-v3-6.patch
-%patch152 -p1 -b .CVE-2016-2112-v3-6.patch
-%patch153 -p1 -b .CVE-2016-2115-v3-6.patch
-%patch154 -p1 -b .CVE-2016-2118-v3-6.patch
-%patch155 -p1 -b .CVE-2015-5370-v3-6.patch
-%patch156 -p1 -b .samba-3.6.99-fix_winbind_cache_memory_leak.patch
-%patch157 -p1 -b .samba-3.6.99-fix_memleak_winbind_cached_creds.patch
-%patch158 -p1 -b .samba-3.6.99-idmap_ad_memleak.patch
-%patch159 -p1 -b .samba-3.6.99-libsmb_fix_dfs_connections.patch
-%patch160 -p1 -b .samba-3.6.99-2110-ntlmssp-session-setup-nas.patch
-%patch161 -p1 -b .samba-3.6.99-fix_rpc_query_user_list.patch
-%patch162 -p1 -b .samba-3.6.99-nt_printer_unpublish_fix.patch
-%patch163 -p1 -b .CVE-2016-2125-v3.6.patch
-%patch164 -p1 -b .CVE-2016-2126-v3.6.patch
-%patch165 -p1 -b .samba-3.6.99-fix_member_auth_after_changed_secret.patch
-%patch166 -p1 -b .samba-3.6.99-fix_dirsort_ea-support.patch
-%patch167 -p1 -b .CVE-2017-7494-v3-6.patch
-%patch168 -p1 -b .samba-3.6.99-winbind_fix_trusted_domain_handling.patch
-%patch169 -p1 -b .CVE-2017-2619.patch
-%patch170 -p1 -b .CVE-2017-12150-v3-6.patch
-%patch171 -p1 -b .CVE-2017-12163.patch
-%patch172 -p1 -b .samba-3.6.99-fix_CVE-2017-2619_regression.patch
+# %patch0001 -p1 - Not needed on 3.6.23
+# %patch0002 -p1 - Already applied CVE-2013-4408
+# %patch0003 -p1 - Already applied CVE-2013-4408
+# %patch0004 -p1 - Already applied CVE-2013-4408
+# %patch0005 -p1 - Already applied CVE-2013-4408
+# %patch0006 -p1 - Already applied CVE-2013-4408
+# %patch0007 -p1 - Already applied CVE-2013-4408
+# %patch0008 -p1 - Already applied CVE-2013-4408
+# %patch0009 -p1 - Already applied CVE-2013-4408
+# %patch0010 -p1 - Already applied CVE-2013-4408
+# %patch0011 -p1 - Already applied CVE-2013-4408
+# %patch0012 -p1 - Already applied CVE-2013-4408
+# %patch0013 -p1 - Already applied CVE-2013-4408
+# %patch0014 -p1 - Already applied CVE-2013-4408
+# %patch0015 -p1 - Already applied CVE-2013-4408
+# %patch0016 -p1 - Already applied CVE-2013-4408
+# %patch0017 -p1 - Already applied CVE-2012-6150
+# %patch0018 -p1 - Version bump to 3.6.23
+# %patch0019 -p1 - Already applied CVE-2013-4496
+# %patch0020 -p1 - Already applied CVE-2013-4496
+# %patch0021 -p1 - Already applied CVE-2013-4496
+# %patch0022 -p1 - 3.6.23 release notes
+%patch0023 -p1
+%patch0024 -p1
+%patch0025 -p1
+%patch0026 -p1
+%patch0027 -p1
+%patch0028 -p1
+%patch0029 -p1
+%patch0030 -p1
+%patch0031 -p1
+%patch0032 -p1
+%patch0033 -p1
+%patch0034 -p1
+%patch0035 -p1
+%patch0036 -p1
+%patch0037 -p1
+%patch0038 -p1
+%patch0039 -p1
+%patch0040 -p1
+%patch0041 -p1
+%patch0042 -p1
+%patch0043 -p1
+%patch0044 -p1
+%patch0045 -p1
+%patch0046 -p1
+%patch0047 -p1
+%patch0048 -p1
+%patch0049 -p1
+%patch0050 -p1
+%patch0051 -p1
+%patch0052 -p1
+%patch0053 -p1
+%patch0054 -p1
+%patch0055 -p1
+%patch0056 -p1
+%patch0057 -p1
+%patch0058 -p1
+%patch0059 -p1
+%patch0060 -p1
+%patch0061 -p1
+%patch0062 -p1
+%patch0063 -p1
+%patch0064 -p1
+%patch0065 -p1
+%patch0066 -p1
+%patch0067 -p1
+%patch0068 -p1
+%patch0069 -p1
+%patch0070 -p1
+%patch0071 -p1
+%patch0072 -p1
+%patch0073 -p1
+%patch0074 -p1
+%patch0075 -p1
+%patch0076 -p1
+%patch0077 -p1
+%patch0078 -p1
+%patch0079 -p1
+%patch0080 -p1
+%patch0081 -p1
+%patch0082 -p1
+%patch0083 -p1
+%patch0084 -p1
+%patch0085 -p1
+%patch0086 -p1
+%patch0087 -p1
+%patch0088 -p1
+%patch0089 -p1
+%patch0090 -p1
+%patch0091 -p1
+%patch0092 -p1
+%patch0093 -p1
+%patch0094 -p1
+%patch0095 -p1
+%patch0096 -p1
+%patch0097 -p1
+%patch0098 -p1
+%patch0099 -p1
+%patch0100 -p1
+%patch0101 -p1
+%patch0102 -p1
+%patch0103 -p1
+%patch0104 -p1
+%patch0105 -p1
+%patch0106 -p1
+%patch0107 -p1
+%patch0108 -p1
+%patch0109 -p1
+%patch0110 -p1
+%patch0111 -p1
+%patch0112 -p1
+%patch0113 -p1
+%patch0114 -p1
+%patch0115 -p1
+%patch0116 -p1
+%patch0117 -p1
+%patch0118 -p1
+%patch0119 -p1
+%patch0120 -p1
+%patch0121 -p1
+%patch0122 -p1
+%patch0123 -p1
+%patch0124 -p1
+%patch0125 -p1
+%patch0126 -p1
+%patch0127 -p1
+%patch0128 -p1
+%patch0129 -p1
+%patch0130 -p1
+%patch0131 -p1
+%patch0132 -p1
+%patch0133 -p1
+%patch0134 -p1
+%patch0135 -p1
+%patch0136 -p1
+%patch0137 -p1
+%patch0138 -p1
+%patch0139 -p1
+%patch0140 -p1
+%patch0141 -p1
+%patch0142 -p1
+%patch0143 -p1
+%patch0144 -p1
+%patch0145 -p1
+%patch0146 -p1
+%patch0147 -p1
+%patch0148 -p1
+%patch0149 -p1
+%patch0150 -p1
+%patch0151 -p1
+%patch0152 -p1
+%patch0153 -p1
+%patch0154 -p1
+%patch0155 -p1
+%patch0156 -p1
+%patch0157 -p1
+%patch0158 -p1
+%patch0159 -p1
+%patch0160 -p1
+%patch0161 -p1
+%patch0162 -p1
+%patch0163 -p1
+%patch0164 -p1
+%patch0165 -p1
+%patch0166 -p1
+%patch0167 -p1
+%patch0168 -p1
+%patch0169 -p1
+%patch0170 -p1
+%patch0171 -p1
+%patch0172 -p1
+%patch0173 -p1
+%patch0174 -p1
+%patch0175 -p1
+%patch0176 -p1
+%patch0177 -p1
+%patch0178 -p1
+%patch0179 -p1
+%patch0180 -p1
+%patch0181 -p1
+%patch0182 -p1
+%patch0183 -p1
+%patch0184 -p1
+%patch0185 -p1
+%patch0186 -p1
+%patch0187 -p1
+%patch0188 -p1
+%patch0189 -p1
+%patch0190 -p1
+%patch0191 -p1
+%patch0192 -p1
+%patch0193 -p1
+%patch0194 -p1
+%patch0195 -p1
+%patch0196 -p1
+%patch0197 -p1
+%patch0198 -p1
+%patch0199 -p1
+%patch0200 -p1
+%patch0201 -p1
+%patch0202 -p1
+%patch0203 -p1
+%patch0204 -p1
+%patch0205 -p1
+%patch0206 -p1
+%patch0207 -p1
+%patch0208 -p1
+%patch0209 -p1
+%patch0210 -p1
+%patch0211 -p1
+%patch0212 -p1
+%patch0213 -p1
+%patch0214 -p1
+%patch0215 -p1
+%patch0216 -p1
+%patch0217 -p1
+%patch0218 -p1
+%patch0219 -p1
+%patch0220 -p1
+%patch0221 -p1
+%patch0222 -p1
+%patch0223 -p1
+%patch0224 -p1
+%patch0225 -p1
+%patch0226 -p1
+%patch0227 -p1
+%patch0228 -p1
+%patch0229 -p1
+%patch0230 -p1
+%patch0231 -p1
+%patch0232 -p1
+%patch0233 -p1
+%patch0234 -p1
+%patch0235 -p1
+%patch0236 -p1
+%patch0237 -p1
+%patch0238 -p1
+%patch0239 -p1
+%patch0240 -p1
+%patch0241 -p1
+%patch0242 -p1
+%patch0243 -p1
+%patch0244 -p1
+%patch0245 -p1
+%patch0246 -p1
+%patch0247 -p1
+%patch0248 -p1
+%patch0249 -p1
+%patch0250 -p1
+%patch0251 -p1
+%patch0252 -p1
+%patch0253 -p1
+%patch0254 -p1
+%patch0255 -p1
+%patch0256 -p1
+%patch0257 -p1
+%patch0258 -p1
+%patch0259 -p1
+%patch0260 -p1
+%patch0261 -p1
+%patch0262 -p1
+%patch0263 -p1
+%patch0264 -p1
+%patch0265 -p1
+%patch0266 -p1
+%patch0267 -p1
+%patch0268 -p1
+%patch0269 -p1
+%patch0270 -p1
+%patch0271 -p1
+%patch0272 -p1
+%patch0273 -p1
+%patch0274 -p1
+%patch0275 -p1
+%patch0276 -p1
+%patch0277 -p1
+%patch0278 -p1
+%patch0279 -p1
+%patch0280 -p1
+%patch0281 -p1
+%patch0282 -p1
+%patch0283 -p1
+%patch0284 -p1
+%patch0285 -p1
+%patch0286 -p1
+%patch0287 -p1
+%patch0288 -p1
+%patch0289 -p1
+%patch0290 -p1
+%patch0291 -p1
+%patch0292 -p1
+%patch0293 -p1
+%patch0294 -p1
+%patch0295 -p1
+%patch0296 -p1
+%patch0297 -p1
+%patch0298 -p1
+%patch0299 -p1
+%patch0300 -p1
+%patch0301 -p1
+%patch0302 -p1
+%patch0303 -p1
+%patch0304 -p1
+%patch0305 -p1
+%patch0306 -p1
+%patch0307 -p1
+%patch0308 -p1
+%patch0309 -p1
+%patch0310 -p1
+%patch0311 -p1
+%patch0312 -p1
+%patch0313 -p1
+%patch0314 -p1
+%patch0315 -p1
+%patch0316 -p1
+%patch0317 -p1
+%patch0318 -p1
+%patch0319 -p1
+%patch0320 -p1
+%patch0321 -p1
+%patch0322 -p1
+%patch0323 -p1
+%patch0324 -p1
 
-%patch190 -p1 -b .doc-update.patch
-%patch200 -p1 -b .samba-3.6.x-winbind_tevent_poll.patch
+%patch500 -p1 -b .doc-update.patch
+%patch501 -p1 -b .samba-3.6.x-winbind_tevent_poll.patch
 
 mv %{samba_source}/VERSION %{samba_source}/VERSION.orig
 sed -e 's/SAMBA_VERSION_VENDOR_SUFFIX=$/&\"%{samba_release}\"/' < %samba_source/VERSION.orig > %samba_source/VERSION
@@ -452,22 +949,18 @@ CFLAGS="$RPM_OPT_FLAGS -D_GNU_SOURCE -DLDAP_DEPRECATED -fno-strict-aliasing" \
     --with-dnsupdate \
     --with-libsmbclient \
     --with-libsmbsharemodes \
-    --with-mmap \
     --with-pam \
     --with-pam_smbpass \
     --with-quotas \
     --with-sendfile-support \
     --with-syslog \
     --with-utmp \
-    --with-vfs \
     --with-winbind \
-    --without-smbwrapper \
     --with-lockdir=/var/lib/samba \
     --with-piddir=/var/run \
     --with-mandir=%{_mandir} \
     --with-privatedir=/var/lib/samba/private \
     --with-logfilebase=/var/log/samba \
-    --with-libdir=%{_libdir} \
     --with-modulesdir=%{_libdir}/samba \
     --with-configdir=%{_sysconfdir}/samba \
     --with-pammodulesdir=%{_lib}/security \
@@ -907,19 +1400,38 @@ fi
 %endif
 
 %changelog
+* Tue Mar 27 2018 Andreas Schneider <asn@redhat.com> - 3.6.24-51
+- resolves: #1513877 - Fix memory leak in winbind
+
+* Wed Mar 14 2018 Andreas Schneider <asn@redhat.com> - 3.6.24-50
+- resolves: #1553018 - Fix CVE-2018-1050
+
+* Tue Jan 23 2018 Andreas Schneider <asn@redhat.com> - 3.6.24-49
+- resolves: #1536053 - Fix regression with non-wide symlinks to directories
+
+* Fri Jan 05 2018 Andreas Schneider <asn@redhat.com> - 3.6.24-48
+- resolves: #1519884 - Fix segfault in winbind when querying groups
+
+* Wed Nov 15 2017 Andreas Schneider <asn@redhat.com> - 3.6.24-47
+- resolves: #1413484 - Fix guest login with signing required
+
 * Tue Nov 07 2017 Andreas Schneider <asn@redhat.com> - 3.6.24-46
-- resolves: #1511879 - Fix regression of CVE-2017-2619
+- resolves: #1509455 - Fix regression of CVE-2017-2619
 
 * Thu Sep 14 2017 Andreas Schneider <asn@redhat.com> - 3.6.24-45
-- resolves: #1491210 - CVE-2017-2619 CVE-2017-12150 CVE-2017-12163
+- resolves: #1491211 - CVE-2017-2619 CVE-2017-12150 CVE-2017-12163
 
-* Tue Jul 18 2017 Andreas Schneider <asn@redhat.com> - 3.6.24-44
-- resolves: #1471662 - Fix trusted domain handling in winbind
+* Tue Jun 13 2017 Andreas Schneider <asn@redhat.com> - 3.6.24-44
+- resolves: #1451105 - Fix trusted domain handling in winbind
+- resolves: #1431000 - Fix crash while trying to authenticate with a disabled
+                       account
+- resolves: #1467395 - Add 'winbind request timeout' option
 
-* Thu May 18 2017 Andreas Schneider <asn@redhat.com> - 3.6.24-43
-- resolves: #1450782 - Fix CVE-2017-7494
+* Thu May 18 2017 Andreas Schneider <asn@redhat.com> - 3.6.23-43
+- resolves: #1450783 - Fix CVE-2017-7494
+
 * Thu Feb 09 2017 Andreas Schneider <asn@redhat.com> - 3.6.23-42
-- resolves: #1428835 - Performance issues with vfs_dirsort and extended
+- resolves: #1391256 - Performance issues with vfs_dirsort and extended
                        attributes
 
 * Wed Jan 18 2017 Andreas Schneider <asn@redhat.com> - 3.6.23-41

@@ -1,0 +1,147 @@
+From bd4bc4f84a6c22291e4f4666202bbef2f86bd9ad Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Fri, 7 Mar 2014 14:47:31 +0100
+Subject: [PATCH 248/321] s3-kerberos: remove unused kdc_name from
+ create_local_private_krb5_conf_for_domain().
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+
+Autobuild-User(master): Günther Deschner <gd@samba.org>
+Autobuild-Date(master): Fri Mar  7 18:43:57 CET 2014 on sn-devel-104
+
+Conflicts:
+	source3/libads/kerberos.c
+	source3/libads/kerberos_proto.h
+	source3/libnet/libnet_join.c
+	source3/winbindd/winbindd_cm.c
+---
+ source3/libads/kerberos.c       | 10 ++++------
+ source3/libads/kerberos_proto.h |  3 +--
+ source3/libnet/libnet_join.c    |  2 +-
+ source3/libsmb/namequery_dc.c   |  6 ++----
+ source3/winbindd/winbindd_cm.c  |  6 ++----
+ 5 files changed, 10 insertions(+), 17 deletions(-)
+
+diff --git a/source3/libads/kerberos.c b/source3/libads/kerberos.c
+index 064e5f791d1..b826cb38c58 100644
+--- a/source3/libads/kerberos.c
++++ b/source3/libads/kerberos.c
+@@ -671,8 +671,7 @@ int kerberos_kinit_password(const char *principal,
+ static char *get_kdc_ip_string(char *mem_ctx,
+ 		const char *realm,
+ 		const char *sitename,
+-		struct sockaddr_storage *pss,
+-		const char *kdc_name)
++		struct sockaddr_storage *pss)
+ {
+ 	int i;
+ 	struct ip_service *ip_srv_site = NULL;
+@@ -769,8 +768,7 @@ static char *get_kdc_ip_string(char *mem_ctx,
+ bool create_local_private_krb5_conf_for_domain(const char *realm,
+ 						const char *domain,
+ 						const char *sitename,
+-						struct sockaddr_storage *pss,
+-						const char *kdc_name)
++						struct sockaddr_storage *pss)
+ {
+ 	char *dname;
+ 	char *tmpname = NULL;
+@@ -794,7 +792,7 @@ bool create_local_private_krb5_conf_for_domain(const char *realm,
+ 		return false;
+ 	}
+ 
+-	if (domain == NULL || pss == NULL || kdc_name == NULL) {
++	if (domain == NULL || pss == NULL) {
+ 		return false;
+ 	}
+ 
+@@ -825,7 +823,7 @@ bool create_local_private_krb5_conf_for_domain(const char *realm,
+ 	realm_upper = talloc_strdup(fname, realm);
+ 	strupper_m(realm_upper);
+ 
+-	kdc_ip_string = get_kdc_ip_string(dname, realm, sitename, pss, kdc_name);
++	kdc_ip_string = get_kdc_ip_string(dname, realm, sitename, pss);
+ 	if (!kdc_ip_string) {
+ 		goto done;
+ 	}
+diff --git a/source3/libads/kerberos_proto.h b/source3/libads/kerberos_proto.h
+index 406669cc49f..90d7cd9e732 100644
+--- a/source3/libads/kerberos_proto.h
++++ b/source3/libads/kerberos_proto.h
+@@ -75,8 +75,7 @@ int kerberos_kinit_password(const char *principal,
+ bool create_local_private_krb5_conf_for_domain(const char *realm,
+ 						const char *domain,
+ 						const char *sitename,
+-						struct sockaddr_storage *pss,
+-						const char *kdc_name);
++						struct sockaddr_storage *pss);
+ 
+ /* The following definitions come from libads/authdata.c  */
+ 
+diff --git a/source3/libnet/libnet_join.c b/source3/libnet/libnet_join.c
+index d665d729a8b..dee07266e44 100644
+--- a/source3/libnet/libnet_join.c
++++ b/source3/libnet/libnet_join.c
+@@ -2001,7 +2001,7 @@ static WERROR libnet_DomainJoin(TALLOC_CTX *mem_ctx,
+ 
+ 	create_local_private_krb5_conf_for_domain(
+ 		r->out.dns_domain_name, r->out.netbios_domain_name,
+-		NULL, &cli->dest_ss, cli->desthost);
++		NULL, &cli->dest_ss);
+ 
+ 	if (r->out.domain_is_ad && r->in.account_ou &&
+ 	    !(r->in.join_flags & WKSSVC_JOIN_FLAGS_JOIN_UNSECURE)) {
+diff --git a/source3/libsmb/namequery_dc.c b/source3/libsmb/namequery_dc.c
+index 39b780c611e..149121a10d4 100644
+--- a/source3/libsmb/namequery_dc.c
++++ b/source3/libsmb/namequery_dc.c
+@@ -111,14 +111,12 @@ static bool ads_dc_name(const char *domain,
+ 				create_local_private_krb5_conf_for_domain(realm,
+ 									domain,
+ 									sitename,
+-									&ads->ldap.ss,
+-									ads->config.ldap_server_name);
++									&ads->ldap.ss);
+ 			} else {
+ 				create_local_private_krb5_conf_for_domain(realm,
+ 									domain,
+ 									NULL,
+-									&ads->ldap.ss,
+-									ads->config.ldap_server_name);
++									&ads->ldap.ss);
+ 			}
+ 		}
+ #endif
+diff --git a/source3/winbindd/winbindd_cm.c b/source3/winbindd/winbindd_cm.c
+index 50a341ec8eb..3ac48f5765c 100644
+--- a/source3/winbindd/winbindd_cm.c
++++ b/source3/winbindd/winbindd_cm.c
+@@ -1226,8 +1226,7 @@ static bool dcip_to_name(TALLOC_CTX *mem_ctx,
+ 					create_local_private_krb5_conf_for_domain(domain->alt_name,
+ 									domain->name,
+ 									sitename,
+-									pss,
+-									name);
++									pss);
+ 
+ 					SAFE_FREE(sitename);
+ 				} else {
+@@ -1235,8 +1234,7 @@ static bool dcip_to_name(TALLOC_CTX *mem_ctx,
+ 					create_local_private_krb5_conf_for_domain(domain->alt_name,
+ 									domain->name,
+ 									NULL,
+-									pss,
+-									name);
++									pss);
+ 				}
+ 				winbindd_set_locator_kdc_envs(domain);
+ 
+-- 
+2.14.3
+

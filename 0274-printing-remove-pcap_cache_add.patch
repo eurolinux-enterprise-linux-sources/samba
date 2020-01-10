@@ -1,0 +1,72 @@
+From a8ad19a98d7864f201e210dbb70a186aaeea491f Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@samba.org>
+Date: Fri, 25 Jul 2014 12:18:54 +0200
+Subject: [PATCH 274/321] printing: remove pcap_cache_add()
+
+All print list updates are now done via pcap_cache_replace(), which can
+call into the print_list code directly.
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=10652
+
+Signed-off-by: David Disseldorp <ddiss@samba.org>
+---
+ source3/printing/pcap.c | 16 ++++++----------
+ source3/printing/pcap.h |  1 -
+ 2 files changed, 6 insertions(+), 11 deletions(-)
+
+diff --git a/source3/printing/pcap.c b/source3/printing/pcap.c
+index 5173fc96bcd..5059f2016d4 100644
+--- a/source3/printing/pcap.c
++++ b/source3/printing/pcap.c
+@@ -83,15 +83,6 @@ void pcap_cache_destroy_specific(struct pcap_cache **pp_cache)
+ 	*pp_cache = NULL;
+ }
+ 
+-static bool pcap_cache_add(const char *name, const char *comment, const char *location)
+-{
+-	NTSTATUS status;
+-	time_t t = time_mono(NULL);
+-
+-	status = printer_list_set_printer(talloc_tos(), name, comment, location, t);
+-	return NT_STATUS_IS_OK(status);
+-}
+-
+ bool pcap_cache_loaded(void)
+ {
+ 	NTSTATUS status;
+@@ -105,6 +96,7 @@ bool pcap_cache_replace(const struct pcap_cache *pcache)
+ {
+ 	const struct pcap_cache *p;
+ 	NTSTATUS status;
++	time_t t = time_mono(NULL);
+ 
+ 	status = printer_list_mark_reload();
+ 	if (!NT_STATUS_IS_OK(status)) {
+@@ -113,7 +105,11 @@ bool pcap_cache_replace(const struct pcap_cache *pcache)
+ 	}
+ 
+ 	for (p = pcache; p; p = p->next) {
+-		pcap_cache_add(p->name, p->comment, p->location);
++		status = printer_list_set_printer(talloc_tos(), p->name,
++						  p->comment, p->location, t);
++		if (!NT_STATUS_IS_OK(status)) {
++			return false;
++		}
+ 	}
+ 
+ 	status = printer_list_clean_old();
+diff --git a/source3/printing/pcap.h b/source3/printing/pcap.h
+index d388d7d7dfc..7dccf84b374 100644
+--- a/source3/printing/pcap.h
++++ b/source3/printing/pcap.h
+@@ -35,7 +35,6 @@ struct pcap_cache;
+ 
+ bool pcap_cache_add_specific(struct pcap_cache **ppcache, const char *name, const char *comment, const char *location);
+ void pcap_cache_destroy_specific(struct pcap_cache **ppcache);
+-bool pcap_cache_add(const char *name, const char *comment, const char *location);
+ bool pcap_cache_loaded(void);
+ bool pcap_cache_replace(const struct pcap_cache *cache);
+ void pcap_printer_fn_specific(const struct pcap_cache *, void (*fn)(const char *, const char *, const char *, void *), void *);
+-- 
+2.14.3
+

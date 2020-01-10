@@ -1,0 +1,26 @@
+From 1136a3461957741e2ac7327b7d203c1c785904d6 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 28 May 2014 15:12:29 +0200
+Subject: [PATCH 222/321] Allocate server_info on the correct memory context.
+
+This fixes a talloc double free PANIC when connecting to share.
+---
+ source3/auth/auth_ntlmssp.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/auth/auth_ntlmssp.c b/source3/auth/auth_ntlmssp.c
+index 097501cac9d..3c7e324073a 100644
+--- a/source3/auth/auth_ntlmssp.c
++++ b/source3/auth/auth_ntlmssp.c
+@@ -143,7 +143,7 @@ static NTSTATUS auth_ntlmssp_check_password(struct ntlmssp_state *ntlmssp_state,
+ 
+ 	user_info->logon_parameters = MSV1_0_ALLOW_SERVER_TRUST_ACCOUNT | MSV1_0_ALLOW_WORKSTATION_TRUST_ACCOUNT;
+ 
+-	nt_status = auth_ntlmssp_state->auth_context->check_ntlm_password(mem_ctx,
++	nt_status = auth_ntlmssp_state->auth_context->check_ntlm_password(auth_ntlmssp_state,
+ 									  auth_ntlmssp_state->auth_context,
+ 									  user_info,
+ 									  &auth_ntlmssp_state->server_info);
+-- 
+2.14.3
+

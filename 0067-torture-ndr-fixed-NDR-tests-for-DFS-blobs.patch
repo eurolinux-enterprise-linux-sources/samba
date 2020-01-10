@@ -1,0 +1,32 @@
+From f2066837dcfd7f5d673f99918659fb985a60075f Mon Sep 17 00:00:00 2001
+From: Andrew Tridgell <tridge@samba.org>
+Date: Wed, 7 Sep 2011 15:36:22 +1000
+Subject: [PATCH 067/321] torture-ndr: fixed NDR tests for DFS blobs
+
+Pair-Programmed-With: Andrew Bartlett <abartlet@samba.org>
+---
+ source4/torture/ndr/dfsblob.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/source4/torture/ndr/dfsblob.c b/source4/torture/ndr/dfsblob.c
+index 23a32e163f6..8f62497aab7 100644
+--- a/source4/torture/ndr/dfsblob.c
++++ b/source4/torture/ndr/dfsblob.c
+@@ -74,11 +74,11 @@ struct torture_suite *ndr_dfsblob_suite(TALLOC_CTX *ctx)
+ {
+ 	struct torture_suite *suite = torture_suite_create(ctx, "dfsblob");
+ 
+-	torture_suite_add_ndr_pull_fn_test(suite, dfs_GetDFSReferral_in, dfs_get_ref_in, NDR_IN, NULL);
++	torture_suite_add_ndr_pull_test(suite, dfs_GetDFSReferral_in, dfs_get_ref_in, NULL);
+ 
+-	torture_suite_add_ndr_pull_fn_test(suite, dfs_referral_resp, dfs_get_ref_out2, NDR_BUFFERS|NDR_SCALARS, NULL);
++	torture_suite_add_ndr_pull_test(suite, dfs_referral_resp, dfs_get_ref_out2, NULL);
+ 
+-	torture_suite_add_ndr_pull_fn_test(suite, dfs_referral_resp, dfs_get_ref_out, NDR_BUFFERS|NDR_SCALARS,dfs_referral_out_check);
++	torture_suite_add_ndr_pull_test(suite, dfs_referral_resp, dfs_get_ref_out,dfs_referral_out_check);
+ 
+ 	return suite;
+ }
+-- 
+2.14.3
+

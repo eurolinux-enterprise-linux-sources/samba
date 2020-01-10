@@ -1,0 +1,318 @@
+From 2dfa6891e499b2b1414dd7d27dcb17ab7abd88bf Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Mon, 12 Sep 2011 09:04:53 +0200
+Subject: [PATCH 174/321] s3:smb_signing: add support for easier negotiation of
+ SMB signing
+
+We don't make use of it yet, but it will follow.
+
+metze
+---
+ source3/include/smb_signing.h |   5 ++-
+ source3/libsmb/clientgen.c    |   1 +
+ source3/libsmb/clisigning.c   |   4 +-
+ source3/libsmb/smb_signing.c  | 100 +++++++++++++++++++++++++++++-------------
+ source3/smbd/signing.c        |  10 +++--
+ 5 files changed, 83 insertions(+), 37 deletions(-)
+
+diff --git a/source3/include/smb_signing.h b/source3/include/smb_signing.h
+index d2eda9b3e62..481be1d5006 100644
+--- a/source3/include/smb_signing.h
++++ b/source3/include/smb_signing.h
+@@ -26,9 +26,11 @@ struct smb_signing_state;
+ 
+ struct smb_signing_state *smb_signing_init(TALLOC_CTX *mem_ctx,
+ 					   bool allowed,
++					   bool desired,
+ 					   bool mandatory);
+ struct smb_signing_state *smb_signing_init_ex(TALLOC_CTX *mem_ctx,
+ 					      bool allowed,
++					      bool desired,
+ 					      bool mandatory,
+ 					      void *(*alloc_fn)(TALLOC_CTX *, size_t),
+ 					      void (*free_fn)(TALLOC_CTX *, void *));
+@@ -45,7 +47,8 @@ bool smb_signing_activate(struct smb_signing_state *si,
+ bool smb_signing_is_active(struct smb_signing_state *si);
+ bool smb_signing_is_allowed(struct smb_signing_state *si);
+ bool smb_signing_is_mandatory(struct smb_signing_state *si);
+-bool smb_signing_set_negotiated(struct smb_signing_state *si);
++bool smb_signing_set_negotiated(struct smb_signing_state *si,
++				bool allowed, bool mandatory);
+ bool smb_signing_is_negotiated(struct smb_signing_state *si);
+ 
+ #endif /* _SMB_SIGNING_H_ */
+diff --git a/source3/libsmb/clientgen.c b/source3/libsmb/clientgen.c
+index 8771f02243e..120ee2ebe4a 100644
+--- a/source3/libsmb/clientgen.c
++++ b/source3/libsmb/clientgen.c
+@@ -581,6 +581,7 @@ struct cli_state *cli_initialise_ex(int signing_state)
+ 
+ 	/* initialise signing */
+ 	cli->signing_state = smb_signing_init(cli,
++					      allow_smb_signing,
+ 					      allow_smb_signing,
+ 					      mandatory_signing);
+ 	if (!cli->signing_state) {
+diff --git a/source3/libsmb/clisigning.c b/source3/libsmb/clisigning.c
+index ac4db7626f5..134938fc891 100644
+--- a/source3/libsmb/clisigning.c
++++ b/source3/libsmb/clisigning.c
+@@ -44,7 +44,7 @@ bool cli_simple_set_signing(struct cli_state *cli,
+ 
+ bool cli_temp_set_signing(struct cli_state *cli)
+ {
+-	return smb_signing_set_bsrspyl(cli->signing_state);
++	return true;
+ }
+ 
+ void cli_calculate_sign_mac(struct cli_state *cli, char *buf, uint32_t *seqnum)
+@@ -70,7 +70,7 @@ bool cli_check_sign_mac(struct cli_state *cli, const char *buf, uint32_t seqnum)
+ 
+ void cli_set_signing_negotiated(struct cli_state *cli)
+ {
+-	smb_signing_set_negotiated(cli->signing_state);
++	smb_signing_set_negotiated(cli->signing_state, true, false);
+ }
+ 
+ bool client_is_signing_on(struct cli_state *cli)
+diff --git a/source3/libsmb/smb_signing.c b/source3/libsmb/smb_signing.c
+index 3b89418673e..63e5fd0022a 100644
+--- a/source3/libsmb/smb_signing.c
++++ b/source3/libsmb/smb_signing.c
+@@ -29,15 +29,15 @@ struct smb_signing_state {
+ 	/* is signing localy allowed */
+ 	bool allowed;
+ 
++	/* is signing localy desired */
++	bool desired;
++
+ 	/* is signing localy mandatory */
+ 	bool mandatory;
+ 
+ 	/* is signing negotiated by the peer */
+ 	bool negotiated;
+ 
+-	/* send BSRSPYL signatures */
+-	bool bsrspyl;
+-
+ 	bool active; /* Have I ever seen a validly signed packet? */
+ 
+ 	/* mac_key.length > 0 means signing is started */
+@@ -54,7 +54,6 @@ struct smb_signing_state {
+ static void smb_signing_reset_info(struct smb_signing_state *si)
+ {
+ 	si->active = false;
+-	si->bsrspyl = false;
+ 	si->seqnum = 0;
+ 
+ 	if (si->free_fn) {
+@@ -68,6 +67,7 @@ static void smb_signing_reset_info(struct smb_signing_state *si)
+ 
+ struct smb_signing_state *smb_signing_init_ex(TALLOC_CTX *mem_ctx,
+ 					      bool allowed,
++					      bool desired,
+ 					      bool mandatory,
+ 					      void *(*alloc_fn)(TALLOC_CTX *, size_t),
+ 					      void (*free_fn)(TALLOC_CTX *, void *))
+@@ -92,10 +92,15 @@ struct smb_signing_state *smb_signing_init_ex(TALLOC_CTX *mem_ctx,
+ 	}
+ 
+ 	if (mandatory) {
++		desired = true;
++	}
++
++	if (desired) {
+ 		allowed = true;
+ 	}
+ 
+ 	si->allowed = allowed;
++	si->desired = desired;
+ 	si->mandatory = mandatory;
+ 
+ 	return si;
+@@ -103,9 +108,11 @@ struct smb_signing_state *smb_signing_init_ex(TALLOC_CTX *mem_ctx,
+ 
+ struct smb_signing_state *smb_signing_init(TALLOC_CTX *mem_ctx,
+ 					   bool allowed,
++					   bool desired,
+ 					   bool mandatory)
+ {
+-	return smb_signing_init_ex(mem_ctx, allowed, mandatory, NULL, NULL);
++	return smb_signing_init_ex(mem_ctx, allowed, desired, mandatory,
++				   NULL, NULL);
+ }
+ 
+ static bool smb_signing_good(struct smb_signing_state *si,
+@@ -210,10 +217,11 @@ void smb_signing_sign_pdu(struct smb_signing_state *si,
+ 			  uint8_t *outbuf, uint32_t seqnum)
+ {
+ 	uint8_t calc_md5_mac[16];
+-	uint16_t flags2;
++	uint8_t com;
++	uint8_t flags;
+ 
+ 	if (si->mac_key.length == 0) {
+-		if (!si->bsrspyl) {
++		if (!si->negotiated) {
+ 			return;
+ 		}
+ 	}
+@@ -226,15 +234,32 @@ void smb_signing_sign_pdu(struct smb_signing_state *si,
+ 		abort();
+ 	}
+ 
+-	/* mark the packet as signed - BEFORE we sign it...*/
+-	flags2 = SVAL(outbuf,smb_flg2);
+-	flags2 |= FLAGS2_SMB_SECURITY_SIGNATURES;
+-	SSVAL(outbuf, smb_flg2, flags2);
++	com = SVAL(outbuf,smb_com);
++	flags = SVAL(outbuf,smb_flg);
++
++	if (!(flags & FLAG_REPLY)) {
++		uint16_t flags2 = SVAL(outbuf,smb_flg2);
++		/*
++		 * If this is a request, specify what is
++		 * supported or required by the client
++		 */
++		if (si->negotiated && si->desired) {
++			flags2 |= FLAGS2_SMB_SECURITY_SIGNATURES;
++		}
++		if (si->negotiated && si->mandatory) {
++			flags2 |= FLAGS2_SMB_SECURITY_SIGNATURES_REQUIRED;
++		}
++		SSVAL(outbuf, smb_flg2, flags2);
++	}
+ 
+-	if (si->bsrspyl) {
++	if (si->mac_key.length == 0) {
+ 		/* I wonder what BSRSPYL stands for - but this is what MS
+ 		   actually sends! */
+-		memcpy(calc_md5_mac, "BSRSPYL ", 8);
++		if (com == SMBsesssetupX) {
++			memcpy(calc_md5_mac, "BSRSPYL ", 8);
++		} else {
++			memset(calc_md5_mac, 0, 8);
++		}
+ 	} else {
+ 		smb_signing_md5(&si->mac_key, outbuf,
+ 				seqnum, calc_md5_mac);
+@@ -305,21 +330,6 @@ bool smb_signing_check_pdu(struct smb_signing_state *si,
+ 	return smb_signing_good(si, good, seqnum);
+ }
+ 
+-bool smb_signing_set_bsrspyl(struct smb_signing_state *si)
+-{
+-	if (!si->negotiated) {
+-		return false;
+-	}
+-
+-	if (si->active) {
+-		return false;
+-	}
+-
+-	si->bsrspyl = true;
+-
+-	return true;
+-}
+-
+ bool smb_signing_activate(struct smb_signing_state *si,
+ 			  const DATA_BLOB user_session_key,
+ 			  const DATA_BLOB response)
+@@ -398,14 +408,42 @@ bool smb_signing_is_mandatory(struct smb_signing_state *si)
+ 	return si->mandatory;
+ }
+ 
+-bool smb_signing_set_negotiated(struct smb_signing_state *si)
++bool smb_signing_set_negotiated(struct smb_signing_state *si,
++				bool allowed, bool mandatory)
+ {
+-	if (!si->allowed) {
++	if (si->active) {
++		return true;
++	}
++
++	if (!si->allowed && mandatory) {
+ 		return false;
+ 	}
+ 
+-	si->negotiated = true;
++	if (si->mandatory && !allowed) {
++		return false;
++	}
++
++	if (si->mandatory) {
++		si->negotiated = true;
++		return true;
++	}
++
++	if (mandatory) {
++		si->negotiated = true;
++		return true;
++	}
++
++	if (!si->desired) {
++		si->negotiated = false;
++		return true;
++	}
++
++	if (si->desired && allowed) {
++		si->negotiated = true;
++		return true;
++	}
+ 
++	si->negotiated = false;
+ 	return true;
+ }
+ 
+diff --git a/source3/smbd/signing.c b/source3/smbd/signing.c
+index bea24098839..29bff456b80 100644
+--- a/source3/smbd/signing.c
++++ b/source3/smbd/signing.c
+@@ -157,6 +157,7 @@ static void smbd_shm_signing_free(TALLOC_CTX *mem_ctx, void *ptr)
+ bool srv_init_signing(struct smbd_server_connection *conn)
+ {
+ 	bool allowed = true;
++	bool desired;
+ 	bool mandatory = false;
+ 
+ 	switch (lp_server_signing()) {
+@@ -172,6 +173,8 @@ bool srv_init_signing(struct smbd_server_connection *conn)
+ 		break;
+ 	}
+ 
++	desired = allowed;
++
+ 	if (lp_async_smb_echo_handler()) {
+ 		struct smbd_shm_signing *s;
+ 
+@@ -189,7 +192,7 @@ bool srv_init_signing(struct smbd_server_connection *conn)
+ 		}
+ 		talloc_set_destructor(s, smbd_shm_signing_destructor);
+ 		conn->smb1.signing_state = smb_signing_init_ex(s,
+-							allowed, mandatory,
++							allowed, desired, mandatory,
+ 							smbd_shm_signing_alloc,
+ 							smbd_shm_signing_free);
+ 		if (!conn->smb1.signing_state) {
+@@ -199,7 +202,7 @@ bool srv_init_signing(struct smbd_server_connection *conn)
+ 	}
+ 
+ 	conn->smb1.signing_state = smb_signing_init(smbd_event_context(),
+-						    allowed, mandatory);
++						    allowed, desired, mandatory);
+ 	if (!conn->smb1.signing_state) {
+ 		return false;
+ 	}
+@@ -209,7 +212,8 @@ bool srv_init_signing(struct smbd_server_connection *conn)
+ 
+ void srv_set_signing_negotiated(struct smbd_server_connection *conn)
+ {
+-	smb_signing_set_negotiated(conn->smb1.signing_state);
++	smb_signing_set_negotiated(conn->smb1.signing_state,
++				   true, false);
+ }
+ 
+ /***********************************************************
+-- 
+2.14.3
+

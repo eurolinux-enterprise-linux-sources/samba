@@ -1,0 +1,41 @@
+From 52eb839f84e980eeff63dca2d76269f8ce82ee07 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 1 Apr 2016 15:22:17 +0200
+Subject: [PATCH 047/321] s3-selftest: Fix building smbtorture4
+
+---
+ source3/Makefile-smbtorture4 | 2 +-
+ source4/lib/ldb/wscript      | 4 +---
+ 2 files changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/source3/Makefile-smbtorture4 b/source3/Makefile-smbtorture4
+index 4a1bed7eabf..9fe298c10d2 100644
+--- a/source3/Makefile-smbtorture4
++++ b/source3/Makefile-smbtorture4
+@@ -6,7 +6,7 @@ SAMBA4_BINARIES="smbtorture,ndrdump"
+ samba4-configure:
+ 	@(cd .. && \
+ 		CFLAGS='' $(WAF) reconfigure || \
+-		CFLAGS='' $(WAF) configure --enable-socket-wrapper --enable-nss-wrapper --enable-uid-wrapper --nonshared-binary=$(SAMBA4_BINARIES) --enable-auto-reconfigure )
++		CFLAGS='' $(WAF) configure --enable-socket-wrapper --enable-nss-wrapper --enable-uid-wrapper --nonshared-binary=$(SAMBA4_BINARIES) --enable-auto-reconfigure --bundled-libraries=ALL --disable-gnutls )
+ 
+ .PHONY: samba4-configure
+ 
+diff --git a/source4/lib/ldb/wscript b/source4/lib/ldb/wscript
+index df08f8753de..245e61eb49a 100755
+--- a/source4/lib/ldb/wscript
++++ b/source4/lib/ldb/wscript
+@@ -135,9 +135,7 @@ def build(bld):
+                           pc_files=ldb_pc_files,
+                           vnum=VERSION,
+                           private_library=private_library,
+-                          manpages='man/ldb.3',
+-                          abi_directory = 'ABI',
+-                          abi_match = abi_match)
++                          manpages='man/ldb.3')
+ 
+         # generate a include/ldb_version.h
+         t = bld.SAMBA_GENERATOR('ldb_version.h',
+-- 
+2.14.3
+

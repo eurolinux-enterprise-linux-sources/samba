@@ -1,0 +1,32 @@
+From 01b204b1227e0b94d25cc010a1315feaeb8f7bf4 Mon Sep 17 00:00:00 2001
+From: Raghavendra Talur <rtalur@redhat.com>
+Date: Thu, 20 Jun 2013 17:58:15 -0700
+Subject: [PATCH 238/321] vfs_glusterfs: New file creation fix.
+
+When a new document is created in explorer, a check for file_exist is made.
+vfs_gluster_get_real_filename was returning 0 even when the file did not
+exist.
+---
+ source3/modules/vfs_glusterfs.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/source3/modules/vfs_glusterfs.c b/source3/modules/vfs_glusterfs.c
+index 4beac1d06c7..375294081b3 100644
+--- a/source3/modules/vfs_glusterfs.c
++++ b/source3/modules/vfs_glusterfs.c
+@@ -839,8 +839,10 @@ static int vfs_gluster_get_real_filename(struct vfs_handle_struct *handle,
+ 		 "user.glusterfs.get_real_filename:%s", name);
+ 
+ 	ret = glfs_getxattr(handle->data, path, key_buf, val_buf, NAME_MAX + 1);
+-	if (ret == -1 && errno == ENODATA) {
+-		errno = EOPNOTSUPP;
++	if (ret == -1) {
++		if (errno == ENODATA) {
++			errno = EOPNOTSUPP;
++		}
+ 		return -1;
+ 	}
+ 
+-- 
+2.14.3
+

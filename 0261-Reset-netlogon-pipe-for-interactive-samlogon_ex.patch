@@ -1,0 +1,35 @@
+From 7ccc6f858d7493e3c2975d84eb199e3ac553173d Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 20 Aug 2014 15:51:21 +0200
+Subject: [PATCH 261/321] : Reset netlogon pipe for interactive samlogon_ex.
+
+---
+ source3/winbindd/winbindd_pam.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/source3/winbindd/winbindd_pam.c b/source3/winbindd/winbindd_pam.c
+index e838ac690b0..5316232480b 100644
+--- a/source3/winbindd/winbindd_pam.c
++++ b/source3/winbindd/winbindd_pam.c
+@@ -1297,6 +1297,18 @@ static NTSTATUS winbind_samlogon_retry_loop(struct winbindd_domain *domain,
+ 						NetlogonInteractiveInformation,
+ 						info3);
+ 			}
++
++			if (NT_STATUS_EQUAL(result, NT_STATUS_WRONG_PASSWORD)) {
++				/*
++				 * HACK: This is a 3.6 hack that we get a new
++				 * session_key to do a successfuly interactive
++				 * logon
++				 */
++				TALLOC_FREE(domain->conn.netlogon_pipe);
++				attempts += 1;
++				retry = true;
++				continue;
++			}
+ 		} else if (domain->can_do_samlogon_ex && domain->can_do_validation6) {
+ 			result = rpccli_netlogon_sam_network_logon_ex(
+ 					netlogon_pipe,
+-- 
+2.14.3
+

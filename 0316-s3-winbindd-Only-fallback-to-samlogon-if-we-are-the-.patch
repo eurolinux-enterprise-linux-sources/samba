@@ -1,0 +1,36 @@
+From 41012c3c723622f6224a5059b24634bb05f7300a Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Tue, 16 May 2017 17:16:50 +0200
+Subject: [PATCH 316/321] s3:winbindd: Only fallback to samlogon if we are the
+ primary domain
+
+BUG: https://bugzilla.redhat.com/show_bug.cgi?id=1431000
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+---
+ source3/winbindd/winbindd_pam.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/source3/winbindd/winbindd_pam.c b/source3/winbindd/winbindd_pam.c
+index b1838a6c918..6620e0bb348 100644
+--- a/source3/winbindd/winbindd_pam.c
++++ b/source3/winbindd/winbindd_pam.c
+@@ -1696,7 +1696,13 @@ enum winbindd_result winbindd_dual_pam_auth(struct winbindd_domain *domain,
+ 			goto done;
+ 		}
+ 
+-		if (state->request->flags & WBFLAG_PAM_FALLBACK_AFTER_KRB5) {
++		if ((state->request->flags & WBFLAG_PAM_FALLBACK_AFTER_KRB5) &&
++		    domain->primary) {
++			/*
++			 * We can only do a fallback to samlogon if this is the
++			 * child for the primary domain. We do not have
++			 * credentials for other domains.
++			 */
+ 			DEBUG(3,("falling back to samlogon\n"));
+ 			goto sam_logon;
+ 		} else {
+-- 
+2.14.3
+

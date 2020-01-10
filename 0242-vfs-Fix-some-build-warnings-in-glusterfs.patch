@@ -1,0 +1,36 @@
+From 2f39e4898f1357feb5fc11fcb7abe7e0f97e8134 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 4 Nov 2013 12:32:05 +0100
+Subject: [PATCH 242/321] vfs: Fix some build warnings in glusterfs.
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: David Disseldorp <ddiss@samba.org>
+---
+ source3/modules/vfs_glusterfs.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/source3/modules/vfs_glusterfs.c b/source3/modules/vfs_glusterfs.c
+index b92c7fde9bc..4b8da4a2eff 100644
+--- a/source3/modules/vfs_glusterfs.c
++++ b/source3/modules/vfs_glusterfs.c
+@@ -1262,7 +1262,7 @@ static SMB_ACL_T vfs_gluster_sys_acl_get_file(struct vfs_handle_struct *handle,
+ {
+ 	struct smb_acl_t *result;
+ 	char *buf;
+-	char *key;
++	const char *key;
+ 	ssize_t ret;
+ 
+ 	switch (type) {
+@@ -1324,7 +1324,7 @@ static int vfs_gluster_sys_acl_set_file(struct vfs_handle_struct *handle,
+ 					SMB_ACL_T theacl)
+ {
+ 	int ret;
+-	char *key;
++	const char *key;
+ 	char *buf;
+ 	ssize_t size;
+ 
+-- 
+2.14.3
+

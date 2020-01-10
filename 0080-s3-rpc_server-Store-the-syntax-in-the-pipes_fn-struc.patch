@@ -1,0 +1,118 @@
+From e6f4e7f7c6fdd01ae40932296c37ac499f846a1a Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 8 Apr 2016 14:18:28 +0200
+Subject: [PATCH 080/321] s3:rpc_server: Store the syntax in the pipes_fn
+ structure
+
+---
+ source3/include/ntdomain.h    |  1 +
+ source3/rpc_server/srv_pipe.c | 22 +++++++++++++---------
+ 2 files changed, 14 insertions(+), 9 deletions(-)
+
+diff --git a/source3/include/ntdomain.h b/source3/include/ntdomain.h
+index ed97182b258..4560c5f9a0a 100644
+--- a/source3/include/ntdomain.h
++++ b/source3/include/ntdomain.h
+@@ -87,6 +87,7 @@ typedef struct pipe_rpc_fns {
+ 	const struct api_struct *cmds;
+ 	int n_cmds;
+ 	uint32 context_id;
++	struct ndr_syntax_id syntax;
+ 
+ } PIPE_RPC_FNS;
+ 
+diff --git a/source3/rpc_server/srv_pipe.c b/source3/rpc_server/srv_pipe.c
+index eace1285f68..6e4e760ef65 100644
+--- a/source3/rpc_server/srv_pipe.c
++++ b/source3/rpc_server/srv_pipe.c
+@@ -336,7 +336,7 @@ static bool check_bind_req(struct pipes_struct *p,
+ 	struct pipe_rpc_fns *context_fns;
+ 
+ 	DEBUG(3,("check_bind_req for %s\n",
+-		 get_pipe_name_from_syntax(talloc_tos(), &p->syntax)));
++		 get_pipe_name_from_syntax(talloc_tos(), abstract)));
+ 
+ 	/* we have to check all now since win2k introduced a new UUID on the lsaprpc pipe */
+ 	if (rpc_srv_pipe_exists_by_id(abstract) &&
+@@ -358,6 +358,7 @@ static bool check_bind_req(struct pipes_struct *p,
+ 	context_fns->n_cmds = rpc_srv_get_pipe_num_cmds(abstract);
+ 	context_fns->cmds = rpc_srv_get_pipe_cmds(abstract);
+ 	context_fns->context_id = context_id;
++	context_fns->syntax = *abstract;
+ 
+ 	/* add to the list of open contexts */
+ 
+@@ -1541,7 +1542,8 @@ static PIPE_RPC_FNS* find_pipe_fns_by_context( PIPE_RPC_FNS *list, uint32 contex
+ }
+ 
+ static bool api_rpcTNP(struct pipes_struct *p, struct ncacn_packet *pkt,
+-		       const struct api_struct *api_rpc_cmds, int n_cmds);
++		       const struct api_struct *api_rpc_cmds, int n_cmds,
++		       const struct ndr_syntax_id *syntax);
+ 
+ /****************************************************************************
+  Find the correct RPC function to call for this request.
+@@ -1577,7 +1579,8 @@ static bool api_pipe_request(struct pipes_struct *p,
+ 
+ 	if ( pipe_fns ) {
+ 		TALLOC_CTX *frame = talloc_stackframe();
+-		ret = api_rpcTNP(p, pkt, pipe_fns->cmds, pipe_fns->n_cmds);
++		ret = api_rpcTNP(p, pkt, pipe_fns->cmds, pipe_fns->n_cmds,
++				 &pipe_fns->syntax);
+ 		TALLOC_FREE(frame);
+ 	}
+ 	else {
+@@ -1598,20 +1601,21 @@ static bool api_pipe_request(struct pipes_struct *p,
+  ********************************************************************/
+ 
+ static bool api_rpcTNP(struct pipes_struct *p, struct ncacn_packet *pkt,
+-		       const struct api_struct *api_rpc_cmds, int n_cmds)
++		       const struct api_struct *api_rpc_cmds, int n_cmds,
++		       const struct ndr_syntax_id *syntax)
+ {
+ 	int fn_num;
+ 	uint32_t offset1;
+ 
+ 	/* interpret the command */
+ 	DEBUG(4,("api_rpcTNP: %s op 0x%x - ",
+-		 get_pipe_name_from_syntax(talloc_tos(), &p->syntax),
++		 get_pipe_name_from_syntax(talloc_tos(), syntax),
+ 		 pkt->u.request.opnum));
+ 
+ 	if (DEBUGLEVEL >= 50) {
+ 		fstring name;
+ 		slprintf(name, sizeof(name)-1, "in_%s",
+-			 get_pipe_name_from_syntax(talloc_tos(), &p->syntax));
++			 get_pipe_name_from_syntax(talloc_tos(), syntax));
+ 		dump_pdu_region(name, pkt->u.request.opnum,
+ 				&p->in_data.data, 0,
+ 				p->in_data.data.length);
+@@ -1644,7 +1648,7 @@ static bool api_rpcTNP(struct pipes_struct *p, struct ncacn_packet *pkt,
+ 	/* do the actual command */
+ 	if(!api_rpc_cmds[fn_num].fn(p)) {
+ 		DEBUG(0,("api_rpcTNP: %s: %s failed.\n",
+-			 get_pipe_name_from_syntax(talloc_tos(), &p->syntax),
++			 get_pipe_name_from_syntax(talloc_tos(), syntax),
+ 			 api_rpc_cmds[fn_num].name));
+ 		data_blob_free(&p->out_data.rdata);
+ 		return False;
+@@ -1667,14 +1671,14 @@ static bool api_rpcTNP(struct pipes_struct *p, struct ncacn_packet *pkt,
+ 	if (DEBUGLEVEL >= 50) {
+ 		fstring name;
+ 		slprintf(name, sizeof(name)-1, "out_%s",
+-			 get_pipe_name_from_syntax(talloc_tos(), &p->syntax));
++			 get_pipe_name_from_syntax(talloc_tos(), syntax));
+ 		dump_pdu_region(name, pkt->u.request.opnum,
+ 				&p->out_data.rdata, offset1,
+ 				p->out_data.rdata.length);
+ 	}
+ 
+ 	DEBUG(5,("api_rpcTNP: called %s successfully\n",
+-		 get_pipe_name_from_syntax(talloc_tos(), &p->syntax)));
++		 get_pipe_name_from_syntax(talloc_tos(), syntax)));
+ 
+ 	/* Check for buffer underflow in rpc parsing */
+ 	if ((DEBUGLEVEL >= 10) &&
+-- 
+2.14.3
+

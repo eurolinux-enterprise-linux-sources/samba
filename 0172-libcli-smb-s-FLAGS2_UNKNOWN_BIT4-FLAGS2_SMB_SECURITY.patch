@@ -1,0 +1,44 @@
+From b7eed1300f3a7c3e7ed8f39ad93a68e7fb9aa759 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Fri, 9 Sep 2011 22:43:28 +0200
+Subject: [PATCH 172/321] libcli/smb:
+ s/FLAGS2_UNKNOWN_BIT4/FLAGS2_SMB_SECURITY_SIGNATURES_REQUIRED
+
+metze
+
+Autobuild-User: Stefan Metzmacher <metze@samba.org>
+Autobuild-Date: Sat Sep 10 00:34:50 CEST 2011 on sn-devel-104
+---
+ source3/include/smb.h  | 2 +-
+ source3/smbd/negprot.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/source3/include/smb.h b/source3/include/smb.h
+index 457d2d7a076..0e1d3c57087 100644
+--- a/source3/include/smb.h
++++ b/source3/include/smb.h
+@@ -1272,7 +1272,7 @@ char *strdup(char *s);
+ #define FLAGS2_LONG_PATH_COMPONENTS    0x0001
+ #define FLAGS2_EXTENDED_ATTRIBUTES     0x0002
+ #define FLAGS2_SMB_SECURITY_SIGNATURES 0x0004
+-#define FLAGS2_UNKNOWN_BIT4            0x0010
++#define FLAGS2_SMB_SECURITY_SIGNATURES_REQUIRED 0x0010
+ #define FLAGS2_IS_LONG_NAME            0x0040
+ #define FLAGS2_EXTENDED_SECURITY       0x0800 
+ #define FLAGS2_DFS_PATHNAMES           0x1000
+diff --git a/source3/smbd/negprot.c b/source3/smbd/negprot.c
+index a6285143a66..a30064ac232 100644
+--- a/source3/smbd/negprot.c
++++ b/source3/smbd/negprot.c
+@@ -289,7 +289,7 @@ static void reply_nt1(struct smb_request *req, uint16 choice)
+ 	   distinguish from NT which doesn't set it either. */
+ 
+ 	if ( (req->flags2 & FLAGS2_EXTENDED_SECURITY) &&
+-		((req->flags2 & FLAGS2_UNKNOWN_BIT4) == 0) )
++		((req->flags2 & FLAGS2_SMB_SECURITY_SIGNATURES_REQUIRED) == 0) )
+ 	{
+ 		if (get_remote_arch() != RA_SAMBA) {
+ 			set_remote_arch( RA_VISTA );
+-- 
+2.14.3
+

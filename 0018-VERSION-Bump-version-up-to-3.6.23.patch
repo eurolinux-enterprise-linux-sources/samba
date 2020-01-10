@@ -1,0 +1,26 @@
+From 3db6b1c3c9e68de6250fd7571dad3f9488ad1a0b Mon Sep 17 00:00:00 2001
+From: Karolin Seeger <kseeger@samba.org>
+Date: Tue, 10 Dec 2013 12:43:20 +0100
+Subject: [PATCH 018/321] VERSION: Bump version up to 3.6.23.
+
+Signed-off-by: Karolin Seeger <kseeger@samba.org>
+---
+ source3/VERSION | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/VERSION b/source3/VERSION
+index 6f9de3b7efe..8d06c5c76ef 100644
+--- a/source3/VERSION
++++ b/source3/VERSION
+@@ -25,7 +25,7 @@
+ ########################################################
+ SAMBA_VERSION_MAJOR=3
+ SAMBA_VERSION_MINOR=6
+-SAMBA_VERSION_RELEASE=22
++SAMBA_VERSION_RELEASE=23
+ 
+ ########################################################
+ # Bug fix releases use a letter for the patch revision #
+-- 
+2.14.3
+

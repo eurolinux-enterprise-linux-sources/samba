@@ -1,0 +1,45 @@
+From 1d1cdf1cd591e6e8e4068d017539231c2ccf0a80 Mon Sep 17 00:00:00 2001
+From: Uri Simchoni <uri@samba.org>
+Date: Wed, 10 Feb 2016 00:32:23 +0200
+Subject: [PATCH 314/321] winbindd: initialize foreign domain as AD based on
+ trust
+
+Based on trust parameters, initialize the active_directory
+member of domain object to true.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=11691
+
+Signed-off-by: Uri Simchoni <uri@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+---
+ source3/winbindd/winbindd_util.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/source3/winbindd/winbindd_util.c b/source3/winbindd/winbindd_util.c
+index 700076aaeeb..aaa9ee8454d 100644
+--- a/source3/winbindd/winbindd_util.c
++++ b/source3/winbindd/winbindd_util.c
+@@ -222,6 +222,9 @@ add_trusted_domain_from_tdc(const struct winbindd_tdc_domain *tdc,
+ 	if (sid != NULL) {
+ 		sid_copy(&domain->sid, sid);
+ 	}
++	domain->domain_flags = tdc->trust_flags;
++	domain->domain_type = tdc->trust_type;
++	domain->domain_trust_attribs = tdc->trust_attribs;
+ 
+ 	/* Is this our primary domain ? */
+ 	if (strequal(domain_name, get_global_sam_name()) &&
+@@ -236,6 +239,10 @@ add_trusted_domain_from_tdc(const struct winbindd_tdc_domain *tdc,
+ 		if (lp_security() == SEC_ADS) {
+ 			domain->active_directory = true;
+ 		}
++	} else if (!domain->internal) {
++		if (domain->domain_type == LSA_TRUST_TYPE_UPLEVEL) {
++			domain->active_directory = true;
++		}
+ 	}
+ 
+ 	/* Link to domain list */
+-- 
+2.14.3
+

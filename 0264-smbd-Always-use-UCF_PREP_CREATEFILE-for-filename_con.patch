@@ -1,0 +1,86 @@
+From 75a7c8480cc2e367ca4bf61c8c8feff118d6e0ce Mon Sep 17 00:00:00 2001
+From: Jeremy Allison <jra@samba.org>
+Date: Tue, 3 Dec 2013 10:21:16 -0800
+Subject: [PATCH 264/321] smbd: Always use UCF_PREP_CREATEFILE for
+ filename_convert calls to resolve a path for open.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=10297
+
+Signed-off-by: Jeremy Allison <jra@samba.org>
+Reviewed-by: Volker Lendecke <vl@samba.org>
+
+Autobuild-User(master): Jeremy Allison <jra@samba.org>
+Autobuild-Date(master): Mon Dec  9 21:02:21 CET 2013 on sn-devel-104
+
+(cherry picked from commit f98d10af2a05f0261611f4cabdfe274cd9fe91c0)
+---
+ source3/smbd/nttrans.c     | 6 ++----
+ source3/smbd/reply.c       | 6 ++----
+ source3/smbd/smb2_create.c | 3 +--
+ 3 files changed, 5 insertions(+), 10 deletions(-)
+
+diff --git a/source3/smbd/nttrans.c b/source3/smbd/nttrans.c
+index 08f0db1b34e..d8cc5c74e2d 100644
+--- a/source3/smbd/nttrans.c
++++ b/source3/smbd/nttrans.c
+@@ -536,8 +536,7 @@ void reply_ntcreate_and_X(struct smb_request *req)
+ 				conn,
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+-				(create_disposition == FILE_CREATE)
+-				  ? UCF_PREP_CREATEFILE : 0,
++				UCF_PREP_CREATEFILE,
+ 				NULL,
+ 				&smb_fname);
+ 
+@@ -1172,8 +1171,7 @@ static void call_nt_transact_create(connection_struct *conn,
+ 				conn,
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+-				(create_disposition == FILE_CREATE)
+-				  ? UCF_PREP_CREATEFILE : 0,
++				UCF_PREP_CREATEFILE,
+ 				NULL,
+ 				&smb_fname);
+ 
+diff --git a/source3/smbd/reply.c b/source3/smbd/reply.c
+index 438b16d4b39..9625670d653 100644
+--- a/source3/smbd/reply.c
++++ b/source3/smbd/reply.c
+@@ -1760,8 +1760,7 @@ void reply_open(struct smb_request *req)
+ 				conn,
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+-				(create_disposition == FILE_CREATE)
+-				  ? UCF_PREP_CREATEFILE : 0,
++				UCF_PREP_CREATEFILE,
+ 				NULL,
+ 				&smb_fname);
+ 	if (!NT_STATUS_IS_OK(status)) {
+@@ -1938,8 +1937,7 @@ void reply_open_and_X(struct smb_request *req)
+ 				conn,
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+-				(create_disposition == FILE_CREATE)
+-				  ? UCF_PREP_CREATEFILE : 0,
++				UCF_PREP_CREATEFILE,
+ 				NULL,
+ 				&smb_fname);
+ 	if (!NT_STATUS_IS_OK(status)) {
+diff --git a/source3/smbd/smb2_create.c b/source3/smbd/smb2_create.c
+index cd158523b46..d0cda337322 100644
+--- a/source3/smbd/smb2_create.c
++++ b/source3/smbd/smb2_create.c
+@@ -694,8 +694,7 @@ static struct tevent_req *smbd_smb2_create_send(TALLOC_CTX *mem_ctx,
+ 					  smb1req->conn,
+ 					  smb1req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 					  fname,
+-					  (in_create_disposition == FILE_CREATE) ?
+-						  UCF_PREP_CREATEFILE : 0,
++					  UCF_PREP_CREATEFILE,
+ 					  NULL,
+ 					  &smb_fname);
+ 		if (!NT_STATUS_IS_OK(status)) {
+-- 
+2.14.3
+

@@ -1,0 +1,81 @@
+From d6854094d9b33bdffa8593c1f5a4b59fc6b4434f Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Tue, 13 Feb 2018 14:12:05 +0100
+Subject: [PATCH 322/324] s3:libsmb: Use talloc to avoid memory leaks in
+ cli_negprot
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/libsmb/cliconnect.c |  8 ++++----
+ source3/libsmb/clientgen.c  | 14 ++------------
+ 2 files changed, 6 insertions(+), 16 deletions(-)
+
+diff --git a/source3/libsmb/cliconnect.c b/source3/libsmb/cliconnect.c
+index acb4960ee25..35acaa78864 100644
+--- a/source3/libsmb/cliconnect.c
++++ b/source3/libsmb/cliconnect.c
+@@ -2751,10 +2751,10 @@ static void cli_negprot_done(struct tevent_req *subreq)
+ 		}
+ 
+ 		if (cli->capabilities & (CAP_LARGE_READX|CAP_LARGE_WRITEX)) {
+-			SAFE_FREE(cli->outbuf);
+-			SAFE_FREE(cli->inbuf);
+-			cli->outbuf = (char *)SMB_MALLOC(CLI_SAMBA_MAX_LARGE_READX_SIZE+LARGE_WRITEX_HDR_SIZE+SAFETY_MARGIN);
+-			cli->inbuf = (char *)SMB_MALLOC(CLI_SAMBA_MAX_LARGE_READX_SIZE+LARGE_WRITEX_HDR_SIZE+SAFETY_MARGIN);
++			TALLOC_FREE(cli->outbuf);
++			TALLOC_FREE(cli->inbuf);
++			cli->outbuf = talloc_zero_size(cli, CLI_SAMBA_MAX_LARGE_READX_SIZE+LARGE_WRITEX_HDR_SIZE+SAFETY_MARGIN);
++			cli->inbuf = talloc_zero_size(cli, CLI_SAMBA_MAX_LARGE_READX_SIZE+LARGE_WRITEX_HDR_SIZE+SAFETY_MARGIN);
+ 			if (!cli->outbuf || !cli->inbuf) {
+ 				tevent_req_nterror(req,
+ 						NT_STATUS_NO_MEMORY);
+diff --git a/source3/libsmb/clientgen.c b/source3/libsmb/clientgen.c
+index 120ee2ebe4a..377fe233d44 100644
+--- a/source3/libsmb/clientgen.c
++++ b/source3/libsmb/clientgen.c
+@@ -528,9 +528,9 @@ struct cli_state *cli_initialise_ex(int signing_state)
+ 	cli->timeout = 20000; /* Timeout is in milliseconds. */
+ 	cli->bufsize = CLI_BUFFER_SIZE+4;
+ 	cli->max_xmit = cli->bufsize;
+-	cli->outbuf = (char *)SMB_MALLOC(cli->bufsize+SAFETY_MARGIN);
++	cli->outbuf = talloc_zero_size(cli, cli->bufsize + SAFETY_MARGIN);
+ 	cli->seqnum = 0;
+-	cli->inbuf = (char *)SMB_MALLOC(cli->bufsize+SAFETY_MARGIN);
++	cli->inbuf = talloc_zero_size(cli, cli->bufsize + SAFETY_MARGIN);
+ 	cli->oplock_handler = cli_oplock_ack;
+ 	cli->case_sensitive = false;
+ 	cli->smb_rw_error = SMB_READ_OK;
+@@ -569,10 +569,6 @@ struct cli_state *cli_initialise_ex(int signing_state)
+ 	if (!cli->outbuf || !cli->inbuf)
+                 goto error;
+ 
+-	memset(cli->outbuf, 0, cli->bufsize);
+-	memset(cli->inbuf, 0, cli->bufsize);
+-
+-
+ #if defined(DEVELOPER)
+ 	/* just because we over-allocate, doesn't mean it's right to use it */
+ 	clobber_region(__FUNCTION__, __LINE__, cli->outbuf+cli->bufsize, SAFETY_MARGIN);
+@@ -601,9 +597,6 @@ struct cli_state *cli_initialise_ex(int signing_state)
+         /* Clean up after malloc() error */
+ 
+  error:
+-
+-        SAFE_FREE(cli->inbuf);
+-        SAFE_FREE(cli->outbuf);
+ 	TALLOC_FREE(cli);
+         return NULL;
+ }
+@@ -650,9 +643,6 @@ static void _cli_shutdown(struct cli_state *cli)
+ 	if ( (cli->cnum != (uint16)-1) && (cli->smb_rw_error != SMB_DO_NOT_DO_TDIS ) ) {
+ 		cli_tdis(cli);
+ 	}
+-        
+-	SAFE_FREE(cli->outbuf);
+-	SAFE_FREE(cli->inbuf);
+ 
+ 	data_blob_free(&cli->secblob);
+ 	data_blob_free(&cli->user_session_key);
+-- 
+2.14.3
+

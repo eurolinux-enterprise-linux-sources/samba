@@ -1,0 +1,48 @@
+From 7de073da1881baa1482e011e0b4317725ea200ae Mon Sep 17 00:00:00 2001
+From: Jeremy Allison <jra@samba.org>
+Date: Wed, 28 May 2014 10:40:27 -0700
+Subject: [PATCH 023/321] s3: nmbd: Fix bug 10633 - nmbd denial of service
+
+The Linux kernel has a bug in that it can give spurious
+wakeups on a non-blocking UDP socket for a non-deliverable packet.
+
+When nmbd was changed to use non-blocking sockets it
+became vulnerable to a spurious wakeup from poll/epoll.
+
+Fix sys_recvfile() to return on EWOULDBLOCK/EAGAIN.
+
+CVE-2014-0244
+
+Signed-off-by: Jeremy Allison <jra@samba.org>
+---
+ source3/lib/system.c | 7 ++-----
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
+diff --git a/source3/lib/system.c b/source3/lib/system.c
+index d0e34bc20e5..8f919e529f7 100644
+--- a/source3/lib/system.c
++++ b/source3/lib/system.c
+@@ -278,6 +278,7 @@ ssize_t sys_recv(int fd, void *buf, size_t count, int flags)
+ 
+ /*******************************************************************
+ A recvfrom wrapper that will deal with EINTR.
++NB. As used with non-blocking sockets, return on EAGAIN/EWOULDBLOCK
+ ********************************************************************/
+ 
+ ssize_t sys_recvfrom(int s, void *buf, size_t len, int flags, struct sockaddr *from, socklen_t *fromlen)
+@@ -286,11 +287,7 @@ ssize_t sys_recvfrom(int s, void *buf, size_t len, int flags, struct sockaddr *f
+ 
+ 	do {
+ 		ret = recvfrom(s, buf, len, flags, from, fromlen);
+-#if defined(EWOULDBLOCK)
+-	} while (ret == -1 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK));
+-#else
+-	} while (ret == -1 && (errno == EINTR || errno == EAGAIN));
+-#endif
++	} while (ret == -1 && (errno == EINTR));
+ 	return ret;
+ }
+ 
+-- 
+2.14.3
+

@@ -1,0 +1,37 @@
+From cb4ea661e75821bbb2cec13a424a26b6a687e1b1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Fri, 15 Jan 2016 14:43:48 +0100
+Subject: [PATCH 301/321] s3-util: skip S-1-18 sids in token generaion in
+ sid_array_from_info3().
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=11677
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+---
+ source3/lib/util_sid.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/source3/lib/util_sid.c b/source3/lib/util_sid.c
+index f051b7a1ff5..92fbc76fc26 100644
+--- a/source3/lib/util_sid.c
++++ b/source3/lib/util_sid.c
+@@ -190,6 +190,11 @@ NTSTATUS sid_array_from_info3(TALLOC_CTX *mem_ctx,
+          */
+ 
+ 	for (i = 0; i < info3->sidcount; i++) {
++
++		if (sid_check_is_in_asserted_identity(info3->sids[i].sid)) {
++			continue;
++		}
++
+ 		status = add_sid_to_array(mem_ctx, info3->sids[i].sid,
+ 				      &sid_array, &num_sids);
+ 		if (!NT_STATUS_IS_OK(status)) {
+-- 
+2.14.3
+

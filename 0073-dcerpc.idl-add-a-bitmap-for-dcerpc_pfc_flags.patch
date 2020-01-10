@@ -1,0 +1,59 @@
+From 18b7a5fc9cca443baafc1da9c101865a500ce630 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Sat, 11 Jan 2014 11:52:37 +0100
+Subject: [PATCH 073/321] dcerpc.idl: add a bitmap for dcerpc_pfc_flags
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit e6fc98989a4c0d184ef310360d42741f61baa7db)
+(cherry picked from commit f1489a994cf0666c74d8b80314a3b9e17045c463)
+---
+ librpc/idl/dcerpc.idl | 25 ++++++++++++++++---------
+ 1 file changed, 16 insertions(+), 9 deletions(-)
+
+diff --git a/librpc/idl/dcerpc.idl b/librpc/idl/dcerpc.idl
+index 6c4e4c1675b..4f990219784 100644
+--- a/librpc/idl/dcerpc.idl
++++ b/librpc/idl/dcerpc.idl
+@@ -455,14 +455,21 @@ interface dcerpc
+ 	} dcerpc_payload;
+ 
+ 	/* pfc_flags values */
+-	const uint8 DCERPC_PFC_FLAG_FIRST		= 0x01; /* First fragment */
+-	const uint8 DCERPC_PFC_FLAG_LAST		= 0x02; /* Last fragment */
+-	const uint8 DCERPC_PFC_FLAG_PENDING_CANCEL	= 0x04; /* Cancel was pending at sender */
+-	const uint8 DCERPC_PFC_FLAG_SUPPORT_HEADER_SIGN	= DCERPC_PFC_FLAG_PENDING_CANCEL; /* depends on the pdu type */
+-	const uint8 DCERPC_PFC_FLAG_CONC_MPX		= 0x10; /* supports concurrent multiplexing of a single connection. */
+-	const uint8 DCERPC_PFC_FLAG_DID_NOT_EXECUTE	= 0x20; /* on a fault it means the server hasn't done anything */
+-	const uint8 DCERPC_PFC_FLAG_MAYBE		= 0x40; /* `maybe' call semantics requested */
+-	const uint8 DCERPC_PFC_FLAG_OBJECT_UUID		= 0x80; /* on valid guid is in the optional object field */
++	typedef [bitmap8bit] bitmap {
++		DCERPC_PFC_FLAG_FIRST		= 0x01, /* First fragment */
++		DCERPC_PFC_FLAG_LAST		= 0x02, /* Last fragment */
++		DCERPC_PFC_FLAG_PENDING_CANCEL_OR_HDR_SIGNING = 0x04, /* depends on the pdu type */
++		DCERPC_PFC_FLAG_CONC_MPX	= 0x10, /* supports concurrent multiplexing of a single connection. */
++		DCERPC_PFC_FLAG_DID_NOT_EXECUTE	= 0x20, /* on a fault it means the server hasn't done anything */
++		DCERPC_PFC_FLAG_MAYBE		= 0x40, /* `maybe' call semantics requested */
++		DCERPC_PFC_FLAG_OBJECT_UUID	= 0x80 /* on valid guid is in the optional object field */
++	} dcerpc_pfc_flags;
++
++	/* Cancel was pending at sender */
++	const int DCERPC_PFC_FLAG_PENDING_CANCEL =
++		DCERPC_PFC_FLAG_PENDING_CANCEL_OR_HDR_SIGNING;
++	const ist DCERPC_PFC_FLAG_SUPPORT_HEADER_SIGN =
++		DCERPC_PFC_FLAG_PENDING_CANCEL_OR_HDR_SIGNING;
+ 
+ 	/* these offsets are needed by the signing code */
+ 	const uint8 DCERPC_PFC_OFFSET      =  3;
+@@ -478,7 +485,7 @@ interface dcerpc
+ 		uint8 rpc_vers;	        /* RPC version */
+ 		uint8 rpc_vers_minor;   /* Minor version */
+ 		dcerpc_pkt_type ptype;  /* Packet type */
+-		uint8 pfc_flags;        /* Fragmentation flags */
++		dcerpc_pfc_flags pfc_flags; /* Fragmentation flags */
+ 		uint8 drep[4];	        /* NDR data representation */
+ 		uint16 frag_length;     /* Total length of fragment */
+ 		uint16 auth_length;     /* authenticator length */
+-- 
+2.14.3
+

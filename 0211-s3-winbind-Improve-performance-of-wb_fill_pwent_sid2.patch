@@ -1,0 +1,35 @@
+From 20faa17094058def53322f26cccf12d9a23eb909 Mon Sep 17 00:00:00 2001
+From: Volker Lendecke <vl@samba.org>
+Date: Thu, 16 Jan 2014 16:10:25 +0100
+Subject: [PATCH 211/321] s3-winbind: Improve performance of
+ wb_fill_pwent_sid2uid_done().
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=2191
+
+Signed-off-by: Volker Lendecke <vl@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+
+Autobuild-User(master): Andreas Schneider <asn@cryptomilk.org>
+Autobuild-Date(master): Thu Jan 16 20:17:24 CET 2014 on sn-devel-104
+
+(cherry picked from commit 1a43778433934530d77791edd1af538de8b1d8a3)
+---
+ source3/winbindd/wb_fill_pwent.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/winbindd/wb_fill_pwent.c b/source3/winbindd/wb_fill_pwent.c
+index 878c5ad08d5..96343175bbc 100644
+--- a/source3/winbindd/wb_fill_pwent.c
++++ b/source3/winbindd/wb_fill_pwent.c
+@@ -77,7 +77,7 @@ static void wb_fill_pwent_sid2uid_done(struct tevent_req *subreq)
+ 		return;
+ 	}
+ 
+-	subreq = wb_getgrsid_send(state, state->ev, &state->info->group_sid, 1);
++	subreq = wb_getgrsid_send(state, state->ev, &state->info->group_sid, 0);
+ 	if (tevent_req_nomem(subreq, req)) {
+ 		return;
+ 	}
+-- 
+2.14.3
+

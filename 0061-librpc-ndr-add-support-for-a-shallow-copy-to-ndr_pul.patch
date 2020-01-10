@@ -1,0 +1,57 @@
+From 8abbfc8c67b93fc4e302673c2e4c92d069c74fce Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Sat, 21 Sep 2013 21:58:05 +0200
+Subject: [PATCH 061/321] librpc/ndr: add support for a shallow copy to
+ ndr_pull_subcontext_start/end
+
+This will be usefull to try parsing DCERPC pipe chunks for
+LIBNDR_FLAG_INCOMPLETE_BUFFER.
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+---
+ librpc/ndr/ndr.c | 21 ++++++++++++++++++++-
+ 1 file changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/librpc/ndr/ndr.c b/librpc/ndr/ndr.c
+index 2c82998ae47..f7f366ea870 100644
+--- a/librpc/ndr/ndr.c
++++ b/librpc/ndr/ndr.c
+@@ -617,6 +617,23 @@ _PUBLIC_ enum ndr_err_code ndr_pull_subcontext_start(struct ndr_pull *ndr,
+ 		NDR_CHECK(ndr_pull_uint32(ndr, NDR_SCALARS, &reserved));
+ 		break;
+ 	}
++	case 0xFFFFFFFF:
++		/*
++		 * a shallow copy like subcontext
++		 * useful for DCERPC pipe chunks.
++		 */
++		subndr = talloc_zero(ndr, struct ndr_pull);
++		NDR_ERR_HAVE_NO_MEMORY(subndr);
++
++		subndr->flags		= ndr->flags;
++		subndr->current_mem_ctx	= ndr->current_mem_ctx;
++		subndr->data		= ndr->data;
++		subndr->offset		= ndr->offset;
++		subndr->data_size	= ndr->data_size;
++
++		*_subndr = subndr;
++		return NDR_ERR_SUCCESS;
++
+ 	default:
+ 		return ndr_pull_error(ndr, NDR_ERR_SUBCONTEXT, "Bad subcontext (PULL) header_size %d", 
+ 				      (int)header_size);
+@@ -651,7 +668,9 @@ _PUBLIC_ enum ndr_err_code ndr_pull_subcontext_end(struct ndr_pull *ndr,
+ 	uint32_t advance;
+ 	uint32_t highest_ofs;
+ 
+-	if (size_is >= 0) {
++	if (header_size == 0xFFFFFFFF) {
++		advance = subndr->offset - ndr->offset;
++	} else if (size_is >= 0) {
+ 		advance = size_is;
+ 	} else if (header_size > 0) {
+ 		advance = subndr->data_size;
+-- 
+2.14.3
+

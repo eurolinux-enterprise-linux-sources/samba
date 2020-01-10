@@ -1,0 +1,69 @@
+From 58ce373de2d98bde79c9dbc93bb3d1ed2f1765f7 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Mon, 13 Jan 2014 10:16:40 +0100
+Subject: [PATCH 075/321] s3:rpcclient: add support for
+ DCERPC_AUTH_LEVEL_CONNECT
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+---
+ source3/rpcclient/rpcclient.c | 23 +++++++++++------------
+ 1 file changed, 11 insertions(+), 12 deletions(-)
+
+diff --git a/source3/rpcclient/rpcclient.c b/source3/rpcclient/rpcclient.c
+index c2f3e4c917c..949e14cb361 100644
+--- a/source3/rpcclient/rpcclient.c
++++ b/source3/rpcclient/rpcclient.c
+@@ -1031,6 +1031,10 @@ out_free:
+ 		binding->transport = NCACN_NP;
+ 	}
+ 
++	if (binding->flags & DCERPC_CONNECT) {
++		pipe_default_auth_level = DCERPC_AUTH_LEVEL_CONNECT;
++		pipe_default_auth_type = DCERPC_AUTH_TYPE_NTLMSSP;
++	}
+ 	if (binding->flags & DCERPC_SIGN) {
+ 		pipe_default_auth_level = DCERPC_AUTH_LEVEL_INTEGRITY;
+ 		pipe_default_auth_type = DCERPC_AUTH_TYPE_NTLMSSP;
+@@ -1044,12 +1048,6 @@ out_free:
+ 		pipe_default_auth_spnego_type = PIPE_AUTH_TYPE_SPNEGO_NTLMSSP;
+ 	}
+ 	if (binding->flags & DCERPC_AUTH_NTLM) {
+-		/* If neither Integrity or Privacy are requested then
+-		 * Use just Connect level */
+-		if (pipe_default_auth_level == DCERPC_AUTH_LEVEL_NONE) {
+-			pipe_default_auth_level = DCERPC_AUTH_LEVEL_CONNECT;
+-		}
+-
+ 		if (pipe_default_auth_type == DCERPC_AUTH_TYPE_SPNEGO) {
+ 			pipe_default_auth_spnego_type = PIPE_AUTH_TYPE_SPNEGO_NTLMSSP;
+ 		} else {
+@@ -1057,18 +1055,19 @@ out_free:
+ 		}
+ 	}
+ 	if (binding->flags & DCERPC_AUTH_KRB5) {
+-		/* If neither Integrity or Privacy are requested then
+-		 * Use just Connect level */
+-		if (pipe_default_auth_level == DCERPC_AUTH_LEVEL_NONE) {
+-			pipe_default_auth_level = DCERPC_AUTH_LEVEL_CONNECT;
+-		}
+-
+ 		if (pipe_default_auth_type == DCERPC_AUTH_TYPE_SPNEGO) {
+ 			pipe_default_auth_spnego_type = PIPE_AUTH_TYPE_SPNEGO_KRB5;
+ 		} else {
+ 			pipe_default_auth_type = DCERPC_AUTH_TYPE_KRB5;
+ 		}
+ 	}
++	if (pipe_default_auth_type != DCERPC_AUTH_TYPE_NONE) {
++		/* If neither Integrity or Privacy are requested then
++		 * Use just Connect level */
++		if (pipe_default_auth_level == DCERPC_AUTH_LEVEL_NONE) {
++			pipe_default_auth_level = DCERPC_AUTH_LEVEL_CONNECT;
++		}
++	}
+ 
+ 	if (get_cmdline_auth_info_use_kerberos(rpcclient_auth_info)) {
+ 		flags |= CLI_FULL_CONNECTION_USE_KERBEROS |
+-- 
+2.14.3
+

@@ -1,0 +1,93 @@
+From e60c681d67adfe7275baf708a9ec8bb0bd9ad260 Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@samba.org>
+Date: Wed, 23 Jul 2014 12:12:34 +0200
+Subject: [PATCH 275/321] printing: return last change time with
+ pcap_cache_loaded()
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=10652
+
+Signed-off-by: David Disseldorp <ddiss@samba.org>
+---
+ source3/printing/load.c |  2 +-
+ source3/printing/pcap.c | 10 ++++++++--
+ source3/printing/pcap.h |  2 +-
+ source3/web/swat.c      |  4 ++--
+ 4 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/source3/printing/load.c b/source3/printing/load.c
+index 0a3de73bb46..83f10954a6f 100644
+--- a/source3/printing/load.c
++++ b/source3/printing/load.c
+@@ -64,7 +64,7 @@ load automatic printer services from pre-populated pcap cache
+ void load_printers(struct tevent_context *ev,
+ 		   struct messaging_context *msg_ctx)
+ {
+-	SMB_ASSERT(pcap_cache_loaded());
++	SMB_ASSERT(pcap_cache_loaded(NULL));
+ 
+ 	add_auto_printers();
+ 
+diff --git a/source3/printing/pcap.c b/source3/printing/pcap.c
+index 5059f2016d4..027c1b23393 100644
+--- a/source3/printing/pcap.c
++++ b/source3/printing/pcap.c
+@@ -83,13 +83,19 @@ void pcap_cache_destroy_specific(struct pcap_cache **pp_cache)
+ 	*pp_cache = NULL;
+ }
+ 
+-bool pcap_cache_loaded(void)
++bool pcap_cache_loaded(time_t *_last_change)
+ {
+ 	NTSTATUS status;
+ 	time_t last;
+ 
+ 	status = printer_list_get_last_refresh(&last);
+-	return NT_STATUS_IS_OK(status);
++	if (!NT_STATUS_IS_OK(status)) {
++		return false;
++	}
++	if (_last_change != NULL) {
++		*_last_change = last;
++	}
++	return true;
+ }
+ 
+ bool pcap_cache_replace(const struct pcap_cache *pcache)
+diff --git a/source3/printing/pcap.h b/source3/printing/pcap.h
+index 7dccf84b374..8fc9e9de31c 100644
+--- a/source3/printing/pcap.h
++++ b/source3/printing/pcap.h
+@@ -35,7 +35,7 @@ struct pcap_cache;
+ 
+ bool pcap_cache_add_specific(struct pcap_cache **ppcache, const char *name, const char *comment, const char *location);
+ void pcap_cache_destroy_specific(struct pcap_cache **ppcache);
+-bool pcap_cache_loaded(void);
++bool pcap_cache_loaded(time_t *_last_change);
+ bool pcap_cache_replace(const struct pcap_cache *cache);
+ void pcap_printer_fn_specific(const struct pcap_cache *, void (*fn)(const char *, const char *, const char *, void *), void *);
+ void pcap_printer_read_fn(void (*fn)(const char *, const char *, const char *, void *), void *);
+diff --git a/source3/web/swat.c b/source3/web/swat.c
+index f8933d21c84..a1a035ced87 100644
+--- a/source3/web/swat.c
++++ b/source3/web/swat.c
+@@ -586,7 +586,7 @@ static int save_reload(int snum)
+                 return 0;
+         }
+ 	iNumNonAutoPrintServices = lp_numservices();
+-	if (pcap_cache_loaded()) {
++	if (pcap_cache_loaded(NULL)) {
+ 		load_printers(server_event_context(),
+ 			      server_messaging_context());
+ 	}
+@@ -1572,7 +1572,7 @@ const char *lang_msg_rotate(TALLOC_CTX *ctx, const char *msgid)
+ 	reopen_logs();
+ 	load_interfaces();
+ 	iNumNonAutoPrintServices = lp_numservices();
+-	if (pcap_cache_loaded()) {
++	if (pcap_cache_loaded(NULL)) {
+ 		load_printers(server_event_context(),
+ 			      server_messaging_context());
+ 	}
+-- 
+2.14.3
+

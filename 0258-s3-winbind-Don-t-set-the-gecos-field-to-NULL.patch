@@ -1,0 +1,31 @@
+From d567f2f6977e1a804d7491af3e5392b447d38104 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Thu, 3 Jul 2014 16:19:42 +0200
+Subject: [PATCH 258/321] s3-winbind: Don't set the gecos field to NULL.
+
+The value is loaded from the cache anyway. So it will be set to NULL if
+it is not available.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=10440
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+---
+ source3/winbindd/nss_info_template.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/source3/winbindd/nss_info_template.c b/source3/winbindd/nss_info_template.c
+index 5fdfd9bba33..de93803064d 100644
+--- a/source3/winbindd/nss_info_template.c
++++ b/source3/winbindd/nss_info_template.c
+@@ -48,7 +48,6 @@ static NTSTATUS nss_template_get_info( struct nss_domain_entry *e,
+ 	  username */
+ 	*homedir = talloc_strdup( ctx, lp_template_homedir() );
+ 	*shell   = talloc_strdup( ctx, lp_template_shell() );
+-	*gecos   = NULL;
+ 
+ 	if ( !*homedir || !*shell ) {
+ 		return NT_STATUS_NO_MEMORY;
+-- 
+2.14.3
+

@@ -1,0 +1,39 @@
+From be200773e6540ed0e98f5f5a7c9c0f8e6fb27048 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Thu, 7 Dec 2017 08:59:52 +0100
+Subject: [PATCH 318/321] s3:winbind: Correctly initialize pointers in
+ _wbint_QueryGroupList
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/winbindd/winbindd_dual_srv.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/source3/winbindd/winbindd_dual_srv.c b/source3/winbindd/winbindd_dual_srv.c
+index 70bee1802f5..b6ed3412d42 100644
+--- a/source3/winbindd/winbindd_dual_srv.c
++++ b/source3/winbindd/winbindd_dual_srv.c
+@@ -390,9 +390,9 @@ NTSTATUS _wbint_QueryGroupList(struct pipes_struct *p,
+ 			       struct wbint_QueryGroupList *r)
+ {
+ 	struct winbindd_domain *domain = wb_child_domain();
+-	uint32_t i, num_groups;
+-	struct wb_acct_info *groups;
+-	struct wbint_Principal *result;
++	uint32_t i, num_groups = 0;
++	struct wb_acct_info *groups = NULL;
++	struct wbint_Principal *result = NULL;
+ 	NTSTATUS status;
+ 
+ 	if (domain == NULL) {
+@@ -409,6 +409,7 @@ NTSTATUS _wbint_QueryGroupList(struct pipes_struct *p,
+ 	result = talloc_array(r->out.groups, struct wbint_Principal,
+ 			      num_groups);
+ 	if (result == NULL) {
++		TALLOC_FREE(groups);
+ 		return NT_STATUS_NO_MEMORY;
+ 	}
+ 
+-- 
+2.14.3
+

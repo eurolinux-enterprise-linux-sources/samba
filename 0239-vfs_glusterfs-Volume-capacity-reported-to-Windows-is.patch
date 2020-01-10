@@ -1,0 +1,55 @@
+From 4ea94303717a9c6caa4bcb2d95d1c9a73264ec9f Mon Sep 17 00:00:00 2001
+From: susant <spalai@redhat.com>
+Date: Wed, 7 Aug 2013 01:00:31 -0500
+Subject: [PATCH 239/321] vfs_glusterfs: Volume capacity reported to Windows is
+ incorrect
+
+VFS plugin was sending the actual size of the volume instead of the
+total number of block units because of which windows was getting the
+wrong volume capacity.
+
+Signed-off-by: susant <spalai@redhat.com>
+Reviewed-by: Anand Avati <avati@redhat.com>
+---
+ source3/modules/vfs_glusterfs.c | 11 ++++-------
+ 1 file changed, 4 insertions(+), 7 deletions(-)
+
+diff --git a/source3/modules/vfs_glusterfs.c b/source3/modules/vfs_glusterfs.c
+index 375294081b3..1502776af40 100644
+--- a/source3/modules/vfs_glusterfs.c
++++ b/source3/modules/vfs_glusterfs.c
+@@ -297,7 +297,6 @@ vfs_gluster_disk_free(struct vfs_handle_struct *handle, const char *path,
+ 		      uint64_t *dsize_p)
+ {
+ 	struct statvfs statvfs = { 0, };
+-	uint64_t dfree = 0;
+ 	int ret;
+ 
+ 	ret = glfs_statvfs(handle->data, path, &statvfs);
+@@ -307,19 +306,17 @@ vfs_gluster_disk_free(struct vfs_handle_struct *handle, const char *path,
+ 		return -1;
+ 	}
+ 
+-	dfree = statvfs.f_bsize * statvfs.f_bavail;
+-
+ 	if (bsize_p) {
+-		*bsize_p = statvfs.f_bsize;
++		*bsize_p = (uint64_t)statvfs.f_bsize; /* Block size */
+ 	}
+ 	if (dfree_p) {
+-		*dfree_p = dfree;
++		*dfree_p = (uint64_t)statvfs.f_bavail; /* Available Block units */
+ 	}
+ 	if (dsize_p) {
+-		*dsize_p = statvfs.f_bsize * statvfs.f_blocks;
++		*dsize_p = (uint64_t)statvfs.f_blocks; /* Total Block units */
+ 	}
+ 
+-	return dfree;
++	return (uint64_t)statvfs.f_bavail;
+ }
+ 
+ static int
+-- 
+2.14.3
+

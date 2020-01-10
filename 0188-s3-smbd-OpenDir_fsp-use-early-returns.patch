@@ -1,0 +1,69 @@
+From 6adecc5cae7436d640966311fe3d239450c9e749 Mon Sep 17 00:00:00 2001
+From: Jeremy Allison <jra@samba.org>
+Date: Mon, 19 Dec 2016 12:13:20 -0800
+Subject: [PATCH 188/321] s3: smbd: OpenDir_fsp() use early returns.
+
+CVE-2017-2619
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=12496
+
+Signed-off-by: Jeremy Allison <jra@samba.org>
+---
+ source3/smbd/dir.c | 34 +++++++++++++++++++++-------------
+ 1 file changed, 21 insertions(+), 13 deletions(-)
+
+diff --git a/source3/smbd/dir.c b/source3/smbd/dir.c
+index 2d168c3ba9f..6aed4a6da46 100644
+--- a/source3/smbd/dir.c
++++ b/source3/smbd/dir.c
+@@ -1485,7 +1485,17 @@ static struct smb_Dir *OpenDir_fsp(TALLOC_CTX *mem_ctx, connection_struct *conn,
+ 	struct smbd_server_connection *sconn = conn->sconn;
+ 
+ 	if (!dirp) {
+-		return NULL;
++		goto fail;
++	}
++
++	if (!fsp->is_directory) {
++		errno = EBADF;
++		goto fail;
++	}
++
++	if (fsp->fh->fd == -1) {
++		errno = EBADF;
++		goto fail;
+ 	}
+ 
+ 	dirp->conn = conn;
+@@ -1502,18 +1512,16 @@ static struct smb_Dir *OpenDir_fsp(TALLOC_CTX *mem_ctx, connection_struct *conn,
+ 	}
+ 	talloc_set_destructor(dirp, smb_Dir_destructor);
+ 
+-	if (fsp->is_directory && fsp->fh->fd != -1) {
+-		dirp->dir = SMB_VFS_FDOPENDIR(fsp, mask, attr);
+-		if (dirp->dir != NULL) {
+-			dirp->fsp = fsp;
+-		} else {
+-			DEBUG(10,("OpenDir_fsp: SMB_VFS_FDOPENDIR on %s returned "
+-				"NULL (%s)\n",
+-				dirp->dir_path,
+-				strerror(errno)));
+-			if (errno != ENOSYS) {
+-				return NULL;
+-			}
++	dirp->dir = SMB_VFS_FDOPENDIR(fsp, mask, attr);
++	if (dirp->dir != NULL) {
++		dirp->fsp = fsp;
++	} else {
++		DEBUG(10,("OpenDir_fsp: SMB_VFS_FDOPENDIR on %s returned "
++			"NULL (%s)\n",
++			dirp->dir_path,
++			strerror(errno)));
++		if (errno != ENOSYS) {
++			return NULL;
+ 		}
+ 	}
+ 
+-- 
+2.14.3
+

@@ -1,0 +1,116 @@
+From 09ab0d84c622beee6ca32e962f699a84db6f52be Mon Sep 17 00:00:00 2001
+From: Gregor Beck <gbeck@sernet.de>
+Date: Mon, 13 Jan 2014 13:33:09 +0100
+Subject: [PATCH 064/321] librpc/rpc: add
+ dcerpc_sec_vt_header2_[from_ncacn_packet|equal]()
+
+Pair-Programmed-With: Stefan Metzmacher <metze@samba.org>
+
+Signed-off-by: Gregor Beck <gbeck@sernet.de>
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit 9c5664f58d1e8674ce5a53c6aa10d6343001b6c7)
+---
+ librpc/rpc/dcerpc_util.c | 56 ++++++++++++++++++++++++++++++++++++++++++++++++
+ librpc/rpc/rpc_common.h  | 23 ++++++++++++++++++++
+ 2 files changed, 79 insertions(+)
+
+diff --git a/librpc/rpc/dcerpc_util.c b/librpc/rpc/dcerpc_util.c
+index cb21312152f..3e3616ead27 100644
+--- a/librpc/rpc/dcerpc_util.c
++++ b/librpc/rpc/dcerpc_util.c
+@@ -341,3 +341,59 @@ NTSTATUS dcerpc_read_ncacn_packet_recv(struct tevent_req *req,
+ 	tevent_req_received(req);
+ 	return NT_STATUS_OK;
+ }
++
++struct dcerpc_sec_vt_header2 dcerpc_sec_vt_header2_from_ncacn_packet(const struct ncacn_packet *pkt)
++{
++	struct dcerpc_sec_vt_header2 ret;
++
++	ZERO_STRUCT(ret);
++	ret.ptype = pkt->ptype;
++	memcpy(&ret.drep, pkt->drep, sizeof(ret.drep));
++	ret.call_id = pkt->call_id;
++
++	switch (pkt->ptype) {
++	case DCERPC_PKT_REQUEST:
++		ret.context_id = pkt->u.request.context_id;
++		ret.opnum      = pkt->u.request.opnum;
++		break;
++
++	case DCERPC_PKT_RESPONSE:
++		ret.context_id = pkt->u.response.context_id;
++		break;
++
++	case DCERPC_PKT_FAULT:
++		ret.context_id = pkt->u.fault.context_id;
++		break;
++
++	default:
++		break;
++	}
++
++	return ret;
++}
++
++bool dcerpc_sec_vt_header2_equal(const struct dcerpc_sec_vt_header2 *v1,
++				 const struct dcerpc_sec_vt_header2 *v2)
++{
++	if (v1->ptype != v2->ptype) {
++		return false;
++	}
++
++	if (memcmp(v1->drep, v2->drep, sizeof(v1->drep)) != 0) {
++		return false;
++	}
++
++	if (v1->call_id != v2->call_id) {
++		return false;
++	}
++
++	if (v1->context_id != v2->context_id) {
++		return false;
++	}
++
++	if (v1->opnum != v2->opnum) {
++		return false;
++	}
++
++	return true;
++}
+diff --git a/librpc/rpc/rpc_common.h b/librpc/rpc/rpc_common.h
+index 924645dd896..4f9190d0f76 100644
+--- a/librpc/rpc/rpc_common.h
++++ b/librpc/rpc/rpc_common.h
+@@ -296,4 +296,27 @@ NTSTATUS dcerpc_binding_handle_call(struct dcerpc_binding_handle *h,
+ 				    TALLOC_CTX *r_mem,
+ 				    void *r_ptr);
+ 
++/**
++ * Extract header information from a ncacn_packet
++ * as a dcerpc_sec_vt_header2 as used by the security verification trailer.
++ *
++ * @param[in] pkt a packet
++ *
++ * @return a dcerpc_sec_vt_header2
++ */
++struct dcerpc_sec_vt_header2 dcerpc_sec_vt_header2_from_ncacn_packet(const struct ncacn_packet *pkt);
++
++
++/**
++ * Test if two dcerpc_sec_vt_header2 structures are equal
++ * without consideration of reserved fields.
++ *
++ * @param v1 a pointer to a dcerpc_sec_vt_header2 structure
++ * @param v2 a pointer to a dcerpc_sec_vt_header2 structure
++ *
++ * @retval true if *v1 equals *v2
++ */
++bool dcerpc_sec_vt_header2_equal(const struct dcerpc_sec_vt_header2 *v1,
++				 const struct dcerpc_sec_vt_header2 *v2);
++
+ #endif /* __DEFAULT_LIBRPC_RPCCOMMON_H__ */
+-- 
+2.14.3
+

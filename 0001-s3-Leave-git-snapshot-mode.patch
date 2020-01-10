@@ -1,0 +1,35 @@
+From 61db7b16f72150639c92c0e6fec4aae88ada8726 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 24 Jan 2018 13:56:04 +0100
+Subject: [PATCH 001/321] s3: Leave git snapshot mode
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/VERSION | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/source3/VERSION b/source3/VERSION
+index abf999481d5..6f9de3b7efe 100644
+--- a/source3/VERSION
++++ b/source3/VERSION
+@@ -68,7 +68,7 @@ SAMBA_VERSION_RC_RELEASE=
+ # e.g. SAMBA_VERSION_IS_SVN_SNAPSHOT=yes               #
+ #  ->  "3.0.0-SVN-build-199"                           #
+ ########################################################
+-SAMBA_VERSION_IS_GIT_SNAPSHOT=yes
++SAMBA_VERSION_IS_GIT_SNAPSHOT=no
+ 
+ ########################################################
+ # This can be set by vendors if they want...           #
+@@ -84,7 +84,7 @@ SAMBA_VERSION_IS_GIT_SNAPSHOT=yes
+ #       SAMBA_VERSION_VENDOR_FUNCTION                  #
+ #                                                      #
+ ########################################################
+-SAMBA_VERSION_VENDOR_SUFFIX="test"
++SAMBA_VERSION_VENDOR_SUFFIX="redhat"
+ SAMBA_VERSION_VENDOR_PATCH=
+ 
+ ########################################################
+-- 
+2.14.3
+

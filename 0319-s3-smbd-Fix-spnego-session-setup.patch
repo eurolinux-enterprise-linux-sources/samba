@@ -1,0 +1,26 @@
+From 4afe638bb8a35f46227e385e2a98fb725f966030 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Thu, 11 Jan 2018 16:51:39 +0100
+Subject: [PATCH 319/321] s3:smbd: Fix spnego session setup
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/smbd/sesssetup.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/smbd/sesssetup.c b/source3/smbd/sesssetup.c
+index 80df2978709..138cf37bf51 100644
+--- a/source3/smbd/sesssetup.c
++++ b/source3/smbd/sesssetup.c
+@@ -375,7 +375,7 @@ static void reply_spnego_kerberos(struct smb_request *req,
+ 
+ 	ret = make_server_info_krb5(mem_ctx,
+ 				    user, domain, real_username, pw,
+-				    logon_info, map_domainuser_to_guest,
++				    &logon_info->info3, map_domainuser_to_guest,
+ 				    &server_info);
+ 	if (!NT_STATUS_IS_OK(ret)) {
+ 		DEBUG(1, ("make_server_info_krb5 failed!\n"));
+-- 
+2.14.3
+

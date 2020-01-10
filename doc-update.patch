@@ -886,22 +886,7 @@ Index: samba-3.6.23/docs/manpages/smb.conf.5
 ===================================================================
 --- samba-3.6.23.orig/docs/manpages/smb.conf.5
 +++ samba-3.6.23/docs/manpages/smb.conf.5
-@@ -2,12 +2,12 @@
- .\"     Title: smb.conf
- .\"    Author: [see the "AUTHOR" section]
- .\" Generator: DocBook XSL Stylesheets v1.78.1 <http://docbook.sf.net/>
--.\"      Date: 10/15/2015
-+.\"      Date: 04/11/2016
- .\"    Manual: File Formats and Conventions
- .\"    Source: Samba 3.6
- .\"  Language: English
- .\"
--.TH "SMB\&.CONF" "5" "10/15/2015" "Samba 3\&.6" "File Formats and Conventions"
-+.TH "SMB\&.CONF" "5" "04/11/2016" "Samba 3\&.6" "File Formats and Conventions"
- .\" -----------------------------------------------------------------
- .\" * Define some portability stuff
- .\" -----------------------------------------------------------------
-@@ -1371,6 +1371,24 @@ Example:
+@@ -1370,6 +1370,24 @@ Example:
  \fI\fIallocation roundup size\fR\fR\fI = \fR\fI0 # (to disable roundups)\fR\fI \fR
  .RE
  
@@ -951,7 +936,7 @@ Index: samba-3.6.23/docs/manpages/smb.conf.5
  client lanman auth (G)
  .\" client lanman auth
  .PP
-@@ -1874,14 +1910,11 @@ is just an alias for
+@@ -1875,14 +1911,11 @@ is just an alias for
  \fIseal\fR\&.
  .sp
  The default value is
@@ -969,7 +954,7 @@ Index: samba-3.6.23/docs/manpages/smb.conf.5
  .RE
  
  client ntlmv2 auth (G)
-@@ -1905,6 +1938,12 @@ client lanman auth\&.
+@@ -1906,6 +1939,12 @@ client lanman auth\&.
  .sp
  Note that Windows Vista and later versions already use NTLMv2 by default, and some sites (particularly those following \*(Aqbest practice\*(Aq security polices) only allow NTLMv2 responses, and not the weaker LM or NTLM\&.
  .sp
@@ -982,7 +967,7 @@ Index: samba-3.6.23/docs/manpages/smb.conf.5
  Default:
  \fI\fIclient ntlmv2 auth\fR\fR\fI = \fR\fIyes\fR\fI \fR
  .RE
-@@ -1949,6 +1988,7 @@ and
+@@ -1950,6 +1989,7 @@ and
  \fIdisabled\fR\&.
  .sp
  When set to auto, SMB signing is offered, but not enforced\&. When set to mandatory, SMB signing is required and if set to disabled, SMB signing is not offered either\&.
@@ -990,7 +975,7 @@ Index: samba-3.6.23/docs/manpages/smb.conf.5
  .sp
  Default:
  \fI\fIclient signing\fR\fR\fI = \fR\fIauto\fR\fI \fR
-@@ -1978,6 +2018,12 @@ client use spnego (G)
+@@ -1979,6 +2019,12 @@ client use spnego (G)
  .RS 4
  This variable controls whether Samba clients will try to use Simple and Protected NEGOciation (as specified by rfc2478) with supporting servers (including WindowsXP, Windows2000 and Samba 3\&.0) to agree upon an authentication mechanism\&. This enables Kerberos authentication in particular\&.
  .sp
@@ -1003,7 +988,7 @@ Index: samba-3.6.23/docs/manpages/smb.conf.5
  Default:
  \fI\fIclient use spnego\fR\fR\fI = \fR\fIyes\fR\fI \fR
  .RE
-@@ -8103,6 +8149,24 @@ Example:
+@@ -8116,6 +8162,24 @@ Example:
  \fI\fIqueueresume command\fR\fR\fI = \fR\fIenable %p\fR\fI \fR
  .RE
  
@@ -1028,7 +1013,7 @@ Index: samba-3.6.23/docs/manpages/smb.conf.5
  read list (S)
  .\" read list
  .PP
-@@ -10699,6 +10763,18 @@ Default:
+@@ -10711,6 +10775,18 @@ Default:
  \fI\fIwinbind rpc only\fR\fR\fI = \fR\fIno\fR\fI \fR
  .RE
  
@@ -2388,7 +2373,7 @@ Index: samba-3.6.23/docs/manpages/wbinfo.1
  parameter\&.
  .RE
  .PP
-@@ -360,7 +359,7 @@ then the operation will fail\&.
+@@ -355,7 +354,7 @@ then the operation will fail\&.
  Prints the program version number\&.
  .RE
  .PP

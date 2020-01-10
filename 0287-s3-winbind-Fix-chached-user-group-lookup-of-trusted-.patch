@@ -1,0 +1,55 @@
+From 8aa5f42b0642adcf19ad8573c8d4b32e8e94aa05 Mon Sep 17 00:00:00 2001
+From: Michael Adam <obnox@samba.org>
+Date: Mon, 9 Mar 2015 15:15:37 +0100
+Subject: [PATCH 287/321] s3-winbind: Fix chached user group lookup of trusted
+ domains.
+
+If a user group lookup has aleady been done before with a machine
+account we did always return the incomplete information from the cache.
+This patch makes sure we return the correct group information from the
+netsamlogon cache.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=11143
+
+Pair-Programmed-With: Andreas Schneider <asn@samba.org>
+Signed-off-by: Michael Adam <obnox@samba.org>
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Volker Lendecke <vl@samba.org>
+
+(cherry picked from commit f5d0204bfa1eb641fe7697613c1f773b6a7e65de)
+---
+ source3/winbindd/wb_lookupusergroups.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/source3/winbindd/wb_lookupusergroups.c b/source3/winbindd/wb_lookupusergroups.c
+index aeffc178d9b..1bb70810172 100644
+--- a/source3/winbindd/wb_lookupusergroups.c
++++ b/source3/winbindd/wb_lookupusergroups.c
+@@ -37,6 +37,7 @@ struct tevent_req *wb_lookupusergroups_send(TALLOC_CTX *mem_ctx,
+ {
+ 	struct tevent_req *req, *subreq;
+ 	struct wb_lookupusergroups_state *state;
++	NTSTATUS status;
+ 
+ 	req = tevent_req_create(mem_ctx, &state,
+ 				struct wb_lookupusergroups_state);
+@@ -45,6 +46,16 @@ struct tevent_req *wb_lookupusergroups_send(TALLOC_CTX *mem_ctx,
+ 	}
+ 	sid_copy(&state->sid, sid);
+ 
++	status = lookup_usergroups_cached(NULL,
++					  state,
++					  &state->sid,
++					  &state->sids.num_sids,
++					  &state->sids.sids);
++	if (NT_STATUS_IS_OK(status)) {
++		tevent_req_done(req);
++		return tevent_req_post(req, ev);
++	}
++
+ 	subreq = dcerpc_wbint_LookupUserGroups_send(
+ 		state, ev, dom_child_handle(domain), &state->sid, &state->sids);
+ 	if (tevent_req_nomem(subreq, req)) {
+-- 
+2.14.3
+

@@ -1,0 +1,60 @@
+From 9c87b720f9a00fa4d48191bc171111620ed4417e Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Fri, 10 Jan 2014 16:26:18 +0100
+Subject: [PATCH 245/321] vfs/glusterfs: in case atime is not passed, set it to
+ the current atime
+
+The Linux CIFS client does not pass an updated atime when a write() is
+done. This causes the vfs/glusterfs module to set the atime to -1 on the
+Gluster backend, resulting in an atime far in the future (year 2106).
+
+Signed-off-by: Niels de Vos <ndevos@redhat.com>
+Reviewed-by: Ira Cooper <ira@samba.org>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+
+Autobuild-User(master): Jeremy Allison <jra@samba.org>
+Autobuild-Date(master): Wed Jan 15 21:31:30 CET 2014 on sn-devel-104
+---
+ source3/modules/vfs_glusterfs.c | 26 ++++++++++++++++++++++----
+ 1 file changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/source3/modules/vfs_glusterfs.c b/source3/modules/vfs_glusterfs.c
+index 3757968e626..24f80dd330d 100644
+--- a/source3/modules/vfs_glusterfs.c
++++ b/source3/modules/vfs_glusterfs.c
+@@ -675,10 +675,28 @@ static int vfs_gluster_ntimes(struct vfs_handle_struct *handle,
+ {
+ 	struct timespec times[2];
+ 
+-	times[0].tv_sec = ft->atime.tv_sec;
+-	times[0].tv_nsec = ft->atime.tv_nsec;
+-	times[1].tv_sec = ft->mtime.tv_sec;
+-	times[1].tv_nsec = ft->mtime.tv_nsec;
++	if (null_timespec(ft->atime)) {
++		times[0].tv_sec = smb_fname->st.st_ex_atime.tv_sec;
++		times[0].tv_nsec = smb_fname->st.st_ex_atime.tv_nsec;
++	} else {
++		times[0].tv_sec = ft->atime.tv_sec;
++		times[0].tv_nsec = ft->atime.tv_nsec;
++	}
++
++	if (null_timespec(ft->mtime)) {
++		times[1].tv_sec = smb_fname->st.st_ex_mtime.tv_sec;
++		times[1].tv_nsec = smb_fname->st.st_ex_mtime.tv_nsec;
++	} else {
++		times[1].tv_sec = ft->mtime.tv_sec;
++		times[1].tv_nsec = ft->mtime.tv_nsec;
++	}
++
++	if ((timespec_compare(&times[0],
++			      &smb_fname->st.st_ex_atime) == 0) &&
++	    (timespec_compare(&times[1],
++			      &smb_fname->st.st_ex_mtime) == 0)) {
++		return 0;
++	}
+ 
+ 	return glfs_utimens(handle->data, smb_fname->base_name, times);
+ }
+-- 
+2.14.3
+

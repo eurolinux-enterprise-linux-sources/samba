@@ -1,0 +1,100 @@
+From 7bc436d6901450e969df6288344069d98abc32a8 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Thu, 2 Mar 2017 08:13:57 +0100
+Subject: [PATCH 324/324] s3:winbindd: fix endless forest trust scan
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Commit 0392ebcd1d48e9f472f2148b85316a77d9cc953b effectively
+disabled the enumeration of trusts in other forests.
+
+The fixes for https://bugzilla.samba.org/show_bug.cgi?id=11691
+changed the way we fill domain->domain_flags for domains
+in other forests.
+
+Commit fffefe72fcc62d9688b45f53a5327667dc0b2fe6 readded the
+ability to enumerate trusts of other forests again, in order to
+fix https://bugzilla.samba.org/show_bug.cgi?id=11830
+
+Now we have the problem that multiple domains
+(even outside of our forest) are considert to be
+our forest root, as they have the following flags:
+NETR_TRUST_FLAG_TREEROOT and NETR_TRUST_FLAG_IN_FOREST.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=12605
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+
+Autobuild-User(master): Ralph Böhme <slow@samba.org>
+Autobuild-Date(master): Thu Mar  2 17:53:14 CET 2017 on sn-devel-144
+
+(cherry picked from commit f9aaddcdd8f9ea648c9c5ea804f56ee3ff6c4c67)
+---
+ source3/winbindd/winbindd_ads.c  |  8 ++++++++
+ source3/winbindd/winbindd_util.c | 22 ++++++++++++++++++++++
+ 2 files changed, 30 insertions(+)
+
+diff --git a/source3/winbindd/winbindd_ads.c b/source3/winbindd/winbindd_ads.c
+index 7d960fca8ed..781a417634e 100644
+--- a/source3/winbindd/winbindd_ads.c
++++ b/source3/winbindd/winbindd_ads.c
+@@ -1465,6 +1465,14 @@ static NTSTATUS trusted_domains(struct winbindd_domain *domain,
+ 			}
+ 			TALLOC_FREE(parent);
+ 
++			/*
++			 * We need to pass the modified properties
++			 * to the caller.
++			 */
++			trust->trust_flags = d.domain_flags;
++			trust->trust_type = d.domain_type;
++			trust->trust_attributes = d.domain_trust_attribs;
++
+ 			wcache_tdc_add_domain( &d );
+ 			ret_count++;
+ 		}
+diff --git a/source3/winbindd/winbindd_util.c b/source3/winbindd/winbindd_util.c
+index 0f67bf127f0..1326e78171a 100644
+--- a/source3/winbindd/winbindd_util.c
++++ b/source3/winbindd/winbindd_util.c
+@@ -345,6 +345,20 @@ static void trustdom_list_done(struct tevent_req *req)
+ 	char *p;
+ 	struct winbindd_tdc_domain trust_params = {0};
+ 	ptrdiff_t extra_len;
++	bool within_forest = false;
++
++	/*
++	 * Only when we enumerate our primary domain
++	 * or our forest root domain, we should keep
++	 * the NETR_TRUST_FLAG_IN_FOREST flag, in
++	 * all other cases we need to clear it as the domain
++	 * is not part of our forest.
++	 */
++	if (state->domain->primary) {
++		within_forest = true;
++	} else if (domain_is_forest_root(state->domain)) {
++		within_forest = true;
++	}
+ 
+ 	res = wb_domain_request_recv(req, state, &response, &err);
+ 	if ((res == -1) || (response->result != WINBINDD_OK)) {
+@@ -429,6 +443,14 @@ static void trustdom_list_done(struct tevent_req *req)
+ 
+ 		trust_params.trust_attribs = (uint32_t)strtoul(q, NULL, 10);
+ 
++		if (!within_forest) {
++			trust_params.trust_flags &= ~NETR_TRUST_FLAG_IN_FOREST;
++		}
++
++		if (!state->domain->primary) {
++			trust_params.trust_flags &= ~NETR_TRUST_FLAG_PRIMARY;
++		}
++
+ 		/*
+ 		 * We always call add_trusted_domain() cause on an existing
+ 		 * domain structure, it will update the SID if necessary.
+-- 
+2.14.3
+

@@ -1,0 +1,51 @@
+From d607ff975490777185c48fc751ab654e4db5a21b Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Tue, 8 Jul 2014 10:26:51 +0200
+Subject: [PATCH 224/321] s3-auth: Fix support for 'security = share' in
+ passwd_to_SamInfo3().
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/auth/server_info.c | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/source3/auth/server_info.c b/source3/auth/server_info.c
+index 077bb6be8b6..e627892b3ee 100644
+--- a/source3/auth/server_info.c
++++ b/source3/auth/server_info.c
+@@ -575,9 +575,21 @@ NTSTATUS passwd_to_SamInfo3(TALLOC_CTX *mem_ctx,
+ 
+ 	ZERO_STRUCT(domain_sid);
+ 
+-	sid_copy(&domain_sid, &user_sid);
+-	sid_split_rid(&domain_sid, &info3->base.rid);
+-	info3->base.domain_sid = dom_sid_dup(info3, &domain_sid);
++	/*
++	 * Check if this is a "Unix Users" domain user,
++	 * we need to handle it in a special way if that's the case.
++	 */
++	if (sid_check_is_in_unix_users(&user_sid)) {
++		/*
++		 * In info3 you can only set rids for the user and the
++		 * primary group, and the domain sid must be that of
++		 * the sam domain.
++		 */
++		sid_copy(&domain_sid, get_global_sam_sid());
++	} else {
++		sid_copy(&domain_sid, &user_sid);
++		sid_split_rid(&domain_sid, &info3->base.rid);
++	}
+ 
+ 	ok = sid_peek_check_rid(&domain_sid, &group_sid,
+ 				&info3->base.primary_gid);
+@@ -592,6 +604,7 @@ NTSTATUS passwd_to_SamInfo3(TALLOC_CTX *mem_ctx,
+ 		goto done;
+ 	}
+ 
++	info3->base.domain_sid = dom_sid_dup(info3, &domain_sid);
+ 	info3->base.acct_flags = ACB_NORMAL;
+ 
+ 	if (num_sids) {
+-- 
+2.14.3
+

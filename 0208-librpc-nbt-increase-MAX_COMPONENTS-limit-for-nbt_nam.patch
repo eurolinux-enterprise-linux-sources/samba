@@ -1,0 +1,39 @@
+From 070e6eb50601544c892f3d7ced7f5e34b15ae9cb Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Tue, 4 Feb 2014 16:38:46 +0100
+Subject: [PATCH 208/321] librpc/nbt: increase MAX_COMPONENTS limit for
+ nbt_names.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+domains with more then 10 subdomains are not so uncommon.
+
+https://bugzilla.samba.org/show_bug.cgi?id=10439
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+
+(cherry picked from commit 4e05bad0d18e351cb2a2db74860e77adea727c79)
+---
+ libcli/nbt/nbtname.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libcli/nbt/nbtname.c b/libcli/nbt/nbtname.c
+index fec8e8e9b9a..3aa00003e4f 100644
+--- a/libcli/nbt/nbtname.c
++++ b/libcli/nbt/nbtname.c
+@@ -30,7 +30,7 @@
+ #include "lib/util/util_net.h"
+ 
+ /* don't allow an unlimited number of name components */
+-#define MAX_COMPONENTS 10
++#define MAX_COMPONENTS 128
+ 
+ /**
+   print a nbt string
+-- 
+2.14.3
+

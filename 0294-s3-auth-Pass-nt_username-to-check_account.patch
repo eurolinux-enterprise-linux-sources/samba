@@ -1,0 +1,39 @@
+From da51f04310def4ed0f466ec9223331cb9f6dd381 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 19 Aug 2015 16:24:08 +0200
+Subject: [PATCH 294/321] s3-auth: Pass nt_username to check_account()
+
+We set nt_username above but do not use it in this function.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=9862
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit e8c76932e4ac192a00afa3b9731f5921c4b37da6)
+---
+ source3/auth/auth_util.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index 7534ad547e9..ed20a57841d 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -1265,9 +1265,12 @@ NTSTATUS make_server_info_info3(TALLOC_CTX *mem_ctx,
+ 
+ 	/* this call will try to create the user if necessary */
+ 
+-	nt_status = check_account(mem_ctx, nt_domain, sent_nt_username,
+-				     &found_username, &pwd,
+-				     &username_was_mapped);
++	nt_status = check_account(mem_ctx,
++				  nt_domain,
++				  nt_username,
++				  &found_username,
++				  &pwd,
++				  &username_was_mapped);
+ 
+ 	if (!NT_STATUS_IS_OK(nt_status)) {
+ 		return nt_status;
+-- 
+2.14.3
+

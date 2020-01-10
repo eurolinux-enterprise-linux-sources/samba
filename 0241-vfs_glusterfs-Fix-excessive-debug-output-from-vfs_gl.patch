@@ -1,0 +1,42 @@
+From 93ae207b886ccfa9a889ff2c966b7090bbce8f38 Mon Sep 17 00:00:00 2001
+From: "Christopher R. Hertel" <crh@redhat.com>
+Date: Thu, 29 Aug 2013 11:01:24 -0500
+Subject: [PATCH 241/321] vfs_glusterfs: Fix excessive debug output from
+ vfs_gluster_open().
+
+The vfs_gluster_open() function generates a debug message (at level 0)
+for every failed attempt to open a pathname.  This includes cases in
+which attempts are made to open a directory as a file (those attempts
+are retried calling vfs_gluster_opendir()).  The result is that the log
+file fills with messages about failed attempts to open directories,
+because they are directories.  This patch ensures that failed attempts
+to open directories as files are logged at log level 4, not 0.  In
+addition, other failed open attempts are logged at level 1, not 0.
+
+Signed-off-by: Christopher R. Hertel <crh@redhat.com>
+Reviewed-by : Susant Palai <spalai@redhat.com>
+Reviewed-by : Raghavendra Talur <rtalur@redhat.com>
+Reviewed-by : Jose A. Rivera <jarrpa@redhat.com>
+---
+ source3/modules/vfs_glusterfs.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/source3/modules/vfs_glusterfs.c b/source3/modules/vfs_glusterfs.c
+index 1b81d06fed8..b92c7fde9bc 100644
+--- a/source3/modules/vfs_glusterfs.c
++++ b/source3/modules/vfs_glusterfs.c
+@@ -488,11 +488,8 @@ static int vfs_gluster_open(struct vfs_handle_struct *handle,
+ 	}
+ 
+ 	if (glfd == NULL) {
+-		DEBUG(0, ("glfs_{open[dir],creat}(%s) failed: %s\n",
+-			  smb_fname->base_name, strerror(errno)));
+ 		return -1;
+ 	}
+-
+ 	return glfd_fd_store(glfd);
+ }
+ 
+-- 
+2.14.3
+

@@ -1,0 +1,339 @@
+From 857cb5b62fc5f3039152a89b88837cfdf1a93255 Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@samba.org>
+Date: Tue, 22 Jul 2014 20:17:38 +0200
+Subject: [PATCH 273/321] printing: reload printer_list.tdb from in memory list
+
+This will allow in future for a single atomic printer_list.tdb update.
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=10652
+
+Signed-off-by: David Disseldorp <ddiss@samba.org>
+---
+ source3/printing/pcap.c           | 26 +++++++++++---------------
+ source3/printing/pcap.h           |  8 ++++----
+ source3/printing/print_aix.c      | 17 ++++++++++++++---
+ source3/printing/print_iprint.c   | 16 ++++++++++------
+ source3/printing/print_standard.c |  8 ++++++--
+ source3/printing/print_svid.c     | 11 +++++++----
+ 6 files changed, 52 insertions(+), 34 deletions(-)
+
+diff --git a/source3/printing/pcap.c b/source3/printing/pcap.c
+index 6ad8e33edd7..5173fc96bcd 100644
+--- a/source3/printing/pcap.c
++++ b/source3/printing/pcap.c
+@@ -83,7 +83,7 @@ void pcap_cache_destroy_specific(struct pcap_cache **pp_cache)
+ 	*pp_cache = NULL;
+ }
+ 
+-bool pcap_cache_add(const char *name, const char *comment, const char *location)
++static bool pcap_cache_add(const char *name, const char *comment, const char *location)
+ {
+ 	NTSTATUS status;
+ 	time_t t = time_mono(NULL);
+@@ -132,8 +132,8 @@ void pcap_cache_reload(struct tevent_context *ev,
+ {
+ 	const char *pcap_name = lp_printcapname();
+ 	bool pcap_reloaded = False;
+-	NTSTATUS status;
+ 	bool post_cache_fill_fn_handled = false;
++	struct pcap_cache *pcache = NULL;
+ 
+ 	DEBUG(3, ("reloading printcap cache\n"));
+ 
+@@ -143,12 +143,6 @@ void pcap_cache_reload(struct tevent_context *ev,
+ 		return;
+ 	}
+ 
+-	status = printer_list_mark_reload();
+-	if (!NT_STATUS_IS_OK(status)) {
+-		DEBUG(0, ("Failed to mark printer list for reload!\n"));
+-		return;
+-	}
+-
+ #ifdef HAVE_CUPS
+ 	if (strequal(pcap_name, "cups")) {
+ 		pcap_reloaded = cups_cache_reload(ev, msg_ctx,
+@@ -164,26 +158,26 @@ void pcap_cache_reload(struct tevent_context *ev,
+ 
+ #ifdef HAVE_IPRINT
+ 	if (strequal(pcap_name, "iprint")) {
+-		pcap_reloaded = iprint_cache_reload();
++		pcap_reloaded = iprint_cache_reload(&pcache);
+ 		goto done;
+ 	}
+ #endif
+ 
+ #if defined(SYSV) || defined(HPUX)
+ 	if (strequal(pcap_name, "lpstat")) {
+-		pcap_reloaded = sysv_cache_reload();
++		pcap_reloaded = sysv_cache_reload(&pcache);
+ 		goto done;
+ 	}
+ #endif
+ 
+ #ifdef AIX
+ 	if (strstr_m(pcap_name, "/qconfig") != NULL) {
+-		pcap_reloaded = aix_cache_reload();
++		pcap_reloaded = aix_cache_reload(&pcache);
+ 		goto done;
+ 	}
+ #endif
+ 
+-	pcap_reloaded = std_pcap_cache_reload(pcap_name);
++	pcap_reloaded = std_pcap_cache_reload(pcap_name, &pcache);
+ 
+ done:
+ 	DEBUG(3, ("reload status: %s\n", (pcap_reloaded) ? "ok" : "error"));
+@@ -192,14 +186,16 @@ done:
+ 		/* cleanup old entries only if the operation was successful,
+ 		 * otherwise keep around the old entries until we can
+ 		 * successfuly reaload */
+-		status = printer_list_clean_old();
+-		if (!NT_STATUS_IS_OK(status)) {
+-			DEBUG(0, ("Failed to cleanup printer list!\n"));
++
++		if (!pcap_cache_replace(pcache)) {
++			DEBUG(0, ("Failed to replace printer list!\n"));
+ 		}
++
+ 		if (post_cache_fill_fn != NULL) {
+ 			post_cache_fill_fn(ev, msg_ctx);
+ 		}
+ 	}
++	pcap_cache_destroy_specific(&pcache);
+ 
+ 	return;
+ }
+diff --git a/source3/printing/pcap.h b/source3/printing/pcap.h
+index 6c062c3294e..d388d7d7dfc 100644
+--- a/source3/printing/pcap.h
++++ b/source3/printing/pcap.h
+@@ -49,7 +49,7 @@ bool pcap_printername_ok(const char *printername);
+ 
+ /* The following definitions come from printing/print_aix.c  */
+ 
+-bool aix_cache_reload(void);
++bool aix_cache_reload(struct pcap_cache **_pcache);
+ 
+ /* The following definitions come from printing/print_cups.c  */
+ 
+@@ -60,13 +60,13 @@ bool cups_cache_reload(struct tevent_context *ev,
+ 
+ /* The following definitions come from printing/print_iprint.c  */
+ 
+-bool iprint_cache_reload(void);
++bool iprint_cache_reload(struct pcap_cache **_pcache);
+ 
+ /* The following definitions come from printing/print_svid.c  */
+ 
+-bool sysv_cache_reload(void);
++bool sysv_cache_reload(struct pcap_cache **_pcache);
+ 
+ /* The following definitions come from printing/print_standard.c  */
+-bool std_pcap_cache_reload(const char *pcap_name);
++bool std_pcap_cache_reload(const char *pcap_name, struct pcap_cache **_pcache);
+ 
+ #endif /* _PRINTING_PCAP_H_ */
+diff --git a/source3/printing/print_aix.c b/source3/printing/print_aix.c
+index 23d9a86fe37..927a71b2948 100644
+--- a/source3/printing/print_aix.c
++++ b/source3/printing/print_aix.c
+@@ -29,12 +29,13 @@
+ #include "printing/pcap.h"
+ 
+ #ifdef AIX
+-bool aix_cache_reload(void)
++bool aix_cache_reload(struct pcap_cache **_pcache)
+ {
+ 	int iEtat;
+ 	XFILE *pfile;
+ 	char *line = NULL, *p;
+ 	char *name = NULL;
++	struct pcap_cache *pcache = NULL;
+ 	TALLOC_CTX *ctx = talloc_init("aix_cache_reload");
+ 
+ 	if (!ctx) {
+@@ -52,6 +53,8 @@ bool aix_cache_reload(void)
+ 	iEtat = 0;
+ 	/* scan qconfig file for searching <printername>:	*/
+ 	for (;(line = fgets_slash(NULL, 1024, pfile)); free(line)) {
++		bool ok;
++
+ 		if (*line == '*' || *line == 0)
+ 			continue;
+ 
+@@ -67,6 +70,7 @@ bool aix_cache_reload(void)
+ 				if (strcmp(p, "bsh") != 0) {
+ 					name = talloc_strdup(ctx, p);
+ 					if (!name) {
++						pcap_cache_destroy_specific(&pcache);
+ 						SAFE_FREE(line);
+ 						x_fclose(pfile);
+ 						TALLOC_FREE(ctx);
+@@ -86,7 +90,10 @@ bool aix_cache_reload(void)
+ 				/* name is found without stanza device  */
+ 				/* probably a good printer ???		*/
+ 				iEtat = 0;
+-				if (!pcap_cache_add(name, NULL, NULL)) {
++				ok = pcap_cache_add_specific(&pcache,
++							     name, NULL, NULL);
++				if (!ok) {
++					pcap_cache_destroy_specific(&pcache);
+ 					SAFE_FREE(line);
+ 					x_fclose(pfile);
+ 					TALLOC_FREE(ctx);
+@@ -101,7 +108,10 @@ bool aix_cache_reload(void)
+ 			} else if (strstr_m(line, "device")) {
+ 				/* it's a good virtual printer */
+ 				iEtat = 0;
+-				if (!pcap_cache_add(name, NULL, NULL)) {
++				ok = pcap_cache_add_specific(&pcache,
++							     name, NULL, NULL);
++				if (!ok) {
++					pcap_cache_destroy_specific(&pcache);
+ 					SAFE_FREE(line);
+ 					x_fclose(pfile);
+ 					TALLOC_FREE(ctx);
+@@ -113,6 +123,7 @@ bool aix_cache_reload(void)
+ 		}
+ 	}
+ 
++	*_pcache = pcache;
+ 	x_fclose(pfile);
+ 	TALLOC_FREE(ctx);
+ 	return true;
+diff --git a/source3/printing/print_iprint.c b/source3/printing/print_iprint.c
+index 529f0dd0d7c..6e91747963c 100644
+--- a/source3/printing/print_iprint.c
++++ b/source3/printing/print_iprint.c
+@@ -204,7 +204,8 @@ static int iprint_get_server_version(http_t *http, char* serviceUri)
+ 
+ static int iprint_cache_add_printer(http_t *http,
+ 				   int reqId,
+-				   char* url)
++				   char *url,
++				   struct pcap_cache **pcache)
+ {
+ 	ipp_t		*request = NULL,	/* IPP Request */
+ 			*response = NULL;	/* IPP Response */
+@@ -340,7 +341,7 @@ static int iprint_cache_add_printer(http_t *http,
+ 		*/
+ 
+ 		if (name != NULL && !secure && smb_enabled) 
+-			pcap_cache_add(name, info, NULL);
++			pcap_cache_add_specific(pcache, name, info, NULL);
+ 	}
+ 
+  out:
+@@ -349,7 +350,7 @@ static int iprint_cache_add_printer(http_t *http,
+ 	return(0);
+ }
+ 
+-bool iprint_cache_reload(void)
++bool iprint_cache_reload(struct pcap_cache **_pcache)
+ {
+ 	http_t		*http = NULL;		/* HTTP connection to server */
+ 	ipp_t		*request = NULL,	/* IPP Request */
+@@ -357,7 +358,8 @@ bool iprint_cache_reload(void)
+ 	ipp_attribute_t	*attr;			/* Current attribute */
+ 	cups_lang_t	*language = NULL;	/* Default language */
+ 	int		i;
+-	bool ret = False;
++	bool ret = false;
++	struct pcap_cache *pcache = NULL;
+ 
+ 	DEBUG(5, ("reloading iprint printcap cache\n"));
+ 
+@@ -439,14 +441,16 @@ bool iprint_cache_reload(void)
+ 					char *url = ippGetString(attr, i, NULL);
+ 					if (!url || !strlen(url))
+ 						continue;
+-					iprint_cache_add_printer(http, i+2, url);
++					iprint_cache_add_printer(http, i+2, url,
++								 &pcache);
+ 				}
+ 			}
+ 			attr = ippNextAttribute(response);
+ 		}
+ 	}
+ 
+-	ret = True;
++	ret = true;
++	*_pcache = pcache;
+ 
+  out:
+ 	if (response)
+diff --git a/source3/printing/print_standard.c b/source3/printing/print_standard.c
+index c4f9c5b7ae3..b5f1056b2e6 100644
+--- a/source3/printing/print_standard.c
++++ b/source3/printing/print_standard.c
+@@ -59,10 +59,11 @@
+ #include "printing/pcap.h"
+ 
+ /* handle standard printcap - moved from pcap_printer_fn() */
+-bool std_pcap_cache_reload(const char *pcap_name)
++bool std_pcap_cache_reload(const char *pcap_name, struct pcap_cache **_pcache)
+ {
+ 	XFILE *pcap_file;
+ 	char *pcap_line;
++	struct pcap_cache *pcache = NULL;
+ 
+ 	if ((pcap_file = x_fopen(pcap_name, O_RDONLY, 0)) == NULL) {
+ 		DEBUG(0, ("Unable to open printcap file %s for read!\n", pcap_name));
+@@ -117,12 +118,15 @@ bool std_pcap_cache_reload(const char *pcap_name)
+ 			}
+ 		}
+ 
+-		if (*name && !pcap_cache_add(name, comment, NULL)) {
++		if ((*name != '\0')
++		 && !pcap_cache_add_specific(&pcache, name, comment, NULL)) {
+ 			x_fclose(pcap_file);
++			pcap_cache_destroy_specific(&pcache);
+ 			return false;
+ 		}
+ 	}
+ 
+ 	x_fclose(pcap_file);
++	*_pcache = pcache;
+ 	return true;
+ }
+diff --git a/source3/printing/print_svid.c b/source3/printing/print_svid.c
+index 222649308ca..879661bf5f3 100644
+--- a/source3/printing/print_svid.c
++++ b/source3/printing/print_svid.c
+@@ -35,10 +35,11 @@
+ #include "printing/pcap.h"
+ 
+ #if defined(SYSV) || defined(HPUX)
+-bool sysv_cache_reload(void)
++bool sysv_cache_reload(struct pcap_cache **_pcache)
+ {
+ 	char **lines;
+ 	int i;
++	struct pcap_cache *pcache = NULL;
+ 
+ #if defined(HPUX)
+ 	DEBUG(5, ("reloading hpux printcap cache\n"));
+@@ -111,14 +112,16 @@ bool sysv_cache_reload(void)
+ 			*tmp = '\0';
+ 		
+ 		/* add it to the cache */
+-		if (!pcap_cache_add(name, NULL, NULL)) {
++		if (!pcap_cache_add_specific(&pcache, name, NULL, NULL)) {
+ 			TALLOC_FREE(lines);
+-			return False;
++			pcap_cache_destroy_specific(&pcache);
++			return false;
+ 		}
+ 	}
+ 
+ 	TALLOC_FREE(lines);
+-	return True;
++	*_pcache = pcache;
++	return true;
+ }
+ 
+ #else
+-- 
+2.14.3
+

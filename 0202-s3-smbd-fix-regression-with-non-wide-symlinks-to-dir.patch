@@ -1,0 +1,78 @@
+From 8daf251838e2bbd19a3c1070dcc526baf09dfac1 Mon Sep 17 00:00:00 2001
+From: Daniel Kobras <d.kobras@science-computing.de>
+Date: Fri, 23 Jun 2017 15:39:21 +0200
+Subject: [PATCH 202/321] s3: smbd: fix regression with non-wide symlinks to
+ directories
+
+The errno returned by open() is ambiguous when called with flags O_NOFOLLOW and
+O_DIRECTORY on a symlink. With ELOOP, we know for certain that we've tried to
+open a symlink. With ENOTDIR, we might have hit a symlink, and need to perform
+further checks to be sure. Adjust non_widelink_open() accordingly. This fixes
+a regression where symlinks to directories within the same share were no
+longer followed for some call paths on systems returning ENOTDIR in the above
+case.
+
+Also remove the knownfail added in previous commit.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=12860
+
+Signed-off-by: Daniel Kobras <d.kobras@science-computing.de>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit acc16592b451905dabc093f1d261e93cd3b59520)
+---
+ source3/smbd/open.c | 24 ++++++++++++++++++++++--
+ 1 file changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/source3/smbd/open.c b/source3/smbd/open.c
+index 22f103d3758..d87661dbce8 100644
+--- a/source3/smbd/open.c
++++ b/source3/smbd/open.c
+@@ -415,7 +415,18 @@ static int non_widelink_open(struct connection_struct *conn,
+ 
+ 	if (fd == -1) {
+ 		saved_errno = link_errno_convert(errno);
+-		if (saved_errno == ELOOP) {
++		/*
++		 * Trying to open a symlink to a directory with O_NOFOLLOW and
++		 * O_DIRECTORY can return either of ELOOP and ENOTDIR. So
++		 * ENOTDIR really means: might be a symlink, but we're not sure.
++		 * In this case, we just assume there's a symlink. If we were
++		 * wrong, process_symlink_open() will return EINVAL. We check
++		 * this below, and fall back to returning the initial
++		 * saved_errno.
++		 *
++		 * BUG: https://bugzilla.samba.org/show_bug.cgi?id=12860
++		 */
++		if (saved_errno == ELOOP || saved_errno == ENOTDIR) {
+ 			if (fsp->posix_open) {
+ 				/* Never follow symlinks on posix open. */
+ 				goto out;
+@@ -425,7 +436,7 @@ static int non_widelink_open(struct connection_struct *conn,
+ 				goto out;
+ 			}
+ 			/*
+-			 * We have a symlink. Follow in userspace
++			 * We may have a symlink. Follow in userspace
+ 			 * to ensure it's under the share definition.
+ 			 */
+ 			fd = process_symlink_open(conn,
+@@ -436,6 +447,15 @@ static int non_widelink_open(struct connection_struct *conn,
+ 					mode,
+ 					link_depth);
+ 			if (fd == -1) {
++				if (saved_errno == ENOTDIR &&
++						errno == EINVAL) {
++					/*
++					 * O_DIRECTORY on neither a directory,
++					 * nor a symlink. Just return
++					 * saved_errno from initial open()
++					 */
++					goto out;
++				}
+ 				saved_errno =
+ 					link_errno_convert(errno);
+ 			}
+-- 
+2.14.3
+

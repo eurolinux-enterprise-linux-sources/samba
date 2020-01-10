@@ -1,0 +1,83 @@
+From 58b063626b0648738e5afac46e11ffeefd7047d2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Wed, 2 Apr 2014 19:37:34 +0200
+Subject: [PATCH 249/321] s3-kerberos: make ipv6 support for generated krb5
+ config files more robust.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Older MIT Kerberos libraries will add any secondary ipv6 address as
+ipv4 address, defining the (default) krb5 port 88 circumvents that.
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+
+Autobuild-User(master): Günther Deschner <gd@samba.org>
+Autobuild-Date(master): Fri Apr  4 16:33:12 CEST 2014 on sn-devel-104
+
+Conflicts:
+	source3/libads/kerberos.c
+---
+ source3/libads/kerberos.c | 29 +++++++++++++++++++++++++++--
+ 1 file changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/source3/libads/kerberos.c b/source3/libads/kerberos.c
+index b826cb38c58..5e34aa324f6 100644
+--- a/source3/libads/kerberos.c
++++ b/source3/libads/kerberos.c
+@@ -668,6 +668,31 @@ int kerberos_kinit_password(const char *principal,
+ 
+ ************************************************************************/
+ 
++/* print_canonical_sockaddr prints an ipv6 addr in the form of
++* [ipv6.addr]. This string, when put in a generated krb5.conf file is not
++* always properly dealt with by some older krb5 libraries. Adding the hard-coded
++* portnumber workarounds the issue. - gd */
++
++static char *print_canonical_sockaddr_with_port(TALLOC_CTX *mem_ctx,
++						const struct sockaddr_storage *pss)
++{
++	char *str = NULL;
++
++	str = print_canonical_sockaddr(mem_ctx, pss);
++	if (str == NULL) {
++		return NULL;
++	}
++
++	if (pss->ss_family != AF_INET6) {
++		return str;
++	}
++
++#if defined(HAVE_IPV6)
++	str = talloc_asprintf_append(str, ":88");
++#endif
++	return str;
++}
++
+ static char *get_kdc_ip_string(char *mem_ctx,
+ 		const char *realm,
+ 		const char *sitename,
+@@ -679,7 +704,7 @@ static char *get_kdc_ip_string(char *mem_ctx,
+ 	int count_site = 0;
+ 	int count_nonsite;
+ 	char *kdc_str = talloc_asprintf(mem_ctx, "%s\tkdc = %s\n", "",
+-					print_canonical_sockaddr(mem_ctx, pss));
++					print_canonical_sockaddr_with_port(mem_ctx, pss));
+ 
+ 	if (kdc_str == NULL) {
+ 		return NULL;
+@@ -740,7 +765,7 @@ static char *get_kdc_ip_string(char *mem_ctx,
+ 		/* Append to the string - inefficient but not done often. */
+ 		kdc_str = talloc_asprintf(mem_ctx, "%s\tkdc = %s\n",
+ 					  kdc_str,
+-					  print_canonical_sockaddr(mem_ctx, &ip_srv_nonsite[i].ss));
++					  print_canonical_sockaddr_with_port(mem_ctx, &ip_srv_nonsite[i].ss));
+ 		if (kdc_str == NULL) {
+ 			SAFE_FREE(ip_srv_site);
+ 			SAFE_FREE(ip_srv_nonsite);
+-- 
+2.14.3
+

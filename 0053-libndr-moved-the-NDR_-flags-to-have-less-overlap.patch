@@ -1,0 +1,95 @@
+From 2399f3ddf379cbcd15b68dc04689a7afa383f537 Mon Sep 17 00:00:00 2001
+From: Andrew Tridgell <tridge@samba.org>
+Date: Wed, 7 Sep 2011 15:29:32 +1000
+Subject: [PATCH 053/321] libndr: moved the NDR_* flags to have less overlap
+
+We have 3 different types of flags values in our NDR layer. We've
+recently found bugs where these types of flags have been mixed up,
+especially by people adding hand written ndr code for tricky
+structures. We previously got away with this because (for example)
+NDR_SCALARS and NDR_IN had the same value, so mixing up the two
+concepts sometimes worked. Unfortunately it also led to bugs where we
+didn't do what was expected, such as in our smbtorture ndr test suite,
+where passing a ndr_flags value of zero led to only checking that two
+empty structures were equal.
+
+This changes the values of the NDR_IN|NDR_OUT and
+NDR_SCALARS|NDR_BUFFERS values to be in different bit ranges, and adds
+macros for checking the validity of passed in flags. A followup patch
+modifies the ndr calls to use these macros, and pidl to generate
+them. This should catch misuse of the APIs.
+
+Pair-Programmed-With: Andrew Bartlett <abartlet@samba.org>
+---
+ librpc/ndr/libndr.h | 44 ++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 36 insertions(+), 8 deletions(-)
+
+diff --git a/librpc/ndr/libndr.h b/librpc/ndr/libndr.h
+index 2453d5aa130..924a4e48401 100644
+--- a/librpc/ndr/libndr.h
++++ b/librpc/ndr/libndr.h
+@@ -206,7 +206,8 @@ enum ndr_err_code {
+ 	NDR_ERR_IPV6ADDRESS,
+ 	NDR_ERR_INVALID_POINTER,
+ 	NDR_ERR_UNREAD_BYTES,
+-	NDR_ERR_NDR64
++	NDR_ERR_NDR64,
++	NDR_ERR_FLAGS
+ };
+ 
+ #define NDR_ERR_CODE_IS_SUCCESS(x) (x == NDR_ERR_SUCCESS)
+@@ -224,17 +225,44 @@ enum ndr_compression_alg {
+ 
+ /*
+   flags passed to control parse flow
++  These are deliberately in a different range to the NDR_IN/NDR_OUT
++  flags to catch mixups
+ */
+-#define NDR_SCALARS 1
+-#define NDR_BUFFERS 2
++#define NDR_SCALARS    0x100
++#define NDR_BUFFERS    0x200
+ 
+ /*
+-  flags passed to ndr_print_*()
++  flags passed to ndr_print_*() and ndr pull/push for functions
++  These are deliberately in a different range to the NDR_SCALARS/NDR_BUFFERS
++  flags to catch mixups
+ */
+-#define NDR_IN 1
+-#define NDR_OUT 2
+-#define NDR_BOTH 3
+-#define NDR_SET_VALUES 4
++#define NDR_IN         0x10
++#define NDR_OUT        0x20
++#define NDR_BOTH       0x30
++#define NDR_SET_VALUES 0x40
++
++
++#define NDR_PULL_CHECK_FLAGS(ndr, ndr_flags) do { \
++	if ((ndr_flags) & ~(NDR_SCALARS|NDR_BUFFERS)) { \
++		return ndr_pull_error(ndr, NDR_ERR_FLAGS, "Invalid pull struct ndr_flags 0x%x", ndr_flags); \
++	} \
++} while (0)
++
++#define NDR_PUSH_CHECK_FLAGS(ndr, ndr_flags) do { \
++	if ((ndr_flags) & ~(NDR_SCALARS|NDR_BUFFERS)) \
++		return ndr_push_error(ndr, NDR_ERR_FLAGS, "Invalid push struct ndr_flags 0x%x", ndr_flags); \
++} while (0)
++
++#define NDR_PULL_CHECK_FN_FLAGS(ndr, flags) do { \
++	if ((flags) & ~(NDR_BOTH|NDR_SET_VALUES)) { \
++		return ndr_pull_error(ndr, NDR_ERR_FLAGS, "Invalid fn pull flags 0x%x", flags); \
++	} \
++} while (0)
++
++#define NDR_PUSH_CHECK_FN_FLAGS(ndr, flags) do { \
++	if ((flags) & ~(NDR_BOTH|NDR_SET_VALUES)) \
++		return ndr_push_error(ndr, NDR_ERR_FLAGS, "Invalid fn push flags 0x%x", flags); \
++} while (0)
+ 
+ #define NDR_PULL_NEED_BYTES(ndr, n) do { \
+ 	if (unlikely((n) > ndr->data_size || ndr->offset + (n) > ndr->data_size)) { \
+-- 
+2.14.3
+

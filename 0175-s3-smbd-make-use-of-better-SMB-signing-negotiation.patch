@@ -1,0 +1,114 @@
+From 6e469ffe9ab2ec795ce97c4d487649effc8dcf33 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Mon, 12 Sep 2011 09:19:06 +0200
+Subject: [PATCH 175/321] s3:smbd: make use of better SMB signing negotiation
+
+metze
+
+Autobuild-User: Stefan Metzmacher <metze@samba.org>
+Autobuild-Date: Wed Sep 14 09:41:02 CEST 2011 on sn-devel-104
+---
+ source3/smbd/negprot.c   |  1 -
+ source3/smbd/proto.h     |  3 ++-
+ source3/smbd/sesssetup.c | 18 ++++++++++++++++++
+ source3/smbd/signing.c   | 13 +++++++++++--
+ 4 files changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/source3/smbd/negprot.c b/source3/smbd/negprot.c
+index a30064ac232..b702d7ecb32 100644
+--- a/source3/smbd/negprot.c
++++ b/source3/smbd/negprot.c
+@@ -349,7 +349,6 @@ static void reply_nt1(struct smb_request *req, uint16 choice)
+ 			capabilities &= ~CAP_RAW_MODE;
+ 			if (lp_server_signing() == Required)
+ 				secword |=NEGOTIATE_SECURITY_SIGNATURES_REQUIRED;
+-			srv_set_signing_negotiated(sconn);
+ 		} else {
+ 			DEBUG(0,("reply_nt1: smb signing is incompatible with share level security !\n"));
+ 			if (lp_server_signing() == Required) {
+diff --git a/source3/smbd/proto.h b/source3/smbd/proto.h
+index b4c5cb40cf8..e39c9f13858 100644
+--- a/source3/smbd/proto.h
++++ b/source3/smbd/proto.h
+@@ -55,7 +55,8 @@ void srv_calculate_sign_mac(struct smbd_server_connection *conn,
+ 			    char *outbuf, uint32_t seqnum);
+ void srv_cancel_sign_response(struct smbd_server_connection *conn);
+ bool srv_init_signing(struct smbd_server_connection *conn);
+-void srv_set_signing_negotiated(struct smbd_server_connection *conn);
++void srv_set_signing_negotiated(struct smbd_server_connection *conn,
++			        bool allowed, bool mandatory);
+ bool srv_is_signing_active(struct smbd_server_connection *conn);
+ bool srv_is_signing_negotiated(struct smbd_server_connection *conn);
+ void srv_set_signing(struct smbd_server_connection *conn,
+diff --git a/source3/smbd/sesssetup.c b/source3/smbd/sesssetup.c
+index 75c2a1551d1..f27cfb51b0b 100644
+--- a/source3/smbd/sesssetup.c
++++ b/source3/smbd/sesssetup.c
+@@ -1335,6 +1335,8 @@ void reply_sesssetup_and_X(struct smb_request *req)
+ 	struct smbd_server_connection *sconn = req->sconn;
+ 
+ 	bool doencrypt = sconn->smb1.negprot.encrypted_passwords;
++	bool signing_allowed = false;
++	bool signing_mandatory = false;
+ 
+ 	START_PROFILE(SMBsesssetupX);
+ 
+@@ -1344,6 +1346,22 @@ void reply_sesssetup_and_X(struct smb_request *req)
+ 
+ 	DEBUG(3,("wct=%d flg2=0x%x\n", req->wct, req->flags2));
+ 
++	if (req->flags2 & FLAGS2_SMB_SECURITY_SIGNATURES) {
++		signing_allowed = true;
++	}
++	if (req->flags2 & FLAGS2_SMB_SECURITY_SIGNATURES_REQUIRED) {
++		signing_mandatory = true;
++	}
++
++	/*
++	 * We can call srv_set_signing_negotiated() each time.
++	 * It finds out when it needs to turn into a noop
++	 * itself.
++	 */
++	srv_set_signing_negotiated(req->sconn,
++				   signing_allowed,
++				   signing_mandatory);
++
+ 	/* a SPNEGO session setup has 12 command words, whereas a normal
+ 	   NT1 session setup has 13. See the cifs spec. */
+ 	if (req->wct == 12 &&
+diff --git a/source3/smbd/signing.c b/source3/smbd/signing.c
+index 29bff456b80..9d233d3edf5 100644
+--- a/source3/smbd/signing.c
++++ b/source3/smbd/signing.c
+@@ -173,6 +173,14 @@ bool srv_init_signing(struct smbd_server_connection *conn)
+ 		break;
+ 	}
+ 
++	/*
++	 * if the client and server allow signing,
++	 * we desire to use it.
++	 *
++	 * This matches Windows behavior and is needed
++	 * because not every client that requires signing
++	 * sends FLAGS2_SMB_SECURITY_SIGNATURES_REQUIRED.
++	 */
+ 	desired = allowed;
+ 
+ 	if (lp_async_smb_echo_handler()) {
+@@ -210,10 +218,11 @@ bool srv_init_signing(struct smbd_server_connection *conn)
+ 	return true;
+ }
+ 
+-void srv_set_signing_negotiated(struct smbd_server_connection *conn)
++void srv_set_signing_negotiated(struct smbd_server_connection *conn,
++				bool allowed, bool mandatory)
+ {
+ 	smb_signing_set_negotiated(conn->smb1.signing_state,
+-				   true, false);
++				   allowed, mandatory);
+ }
+ 
+ /***********************************************************
+-- 
+2.14.3
+

@@ -1,0 +1,134 @@
+From 287b07b5288bd713e3088c87c01664905963c1cf Mon Sep 17 00:00:00 2001
+From: Jeremy Allison <jra@samba.org>
+Date: Tue, 3 Dec 2013 10:19:09 -0800
+Subject: [PATCH 263/321] smbd: change flag name from UCF_CREATING_FILE to
+ UCF_PREP_CREATEFILE
+
+In preparation to using it for all open calls.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=10297
+
+Signed-off-by: Jeremy Allison <jra@samba.org>
+Reviewed-by: Volker Lendecke <vl@samba.org>
+(cherry picked from commit 874318a97868e08837a1febb1be8e8a167b5ae0f)
+---
+ source3/include/smb.h      |  2 +-
+ source3/smbd/filename.c    |  2 +-
+ source3/smbd/nttrans.c     |  4 ++--
+ source3/smbd/reply.c       | 10 +++++-----
+ source3/smbd/smb2_create.c |  2 +-
+ 5 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/source3/include/smb.h b/source3/include/smb.h
+index 0e1d3c57087..1ab693c2505 100644
+--- a/source3/include/smb.h
++++ b/source3/include/smb.h
+@@ -1710,7 +1710,7 @@ struct smb_file_time {
+ #define UCF_COND_ALLOW_WCARD_LCOMP	0x00000004
+ #define UCF_POSIX_PATHNAMES		0x00000008
+ #define UCF_UNIX_NAME_LOOKUP		0x00000010
+-#define UCF_CREATING_FILE		0x00000020
++#define UCF_PREP_CREATEFILE		0x00000020
+ 
+ /*
+  * smb_filename
+diff --git a/source3/smbd/filename.c b/source3/smbd/filename.c
+index fb45a6bc973..53b77752340 100644
+--- a/source3/smbd/filename.c
++++ b/source3/smbd/filename.c
+@@ -716,7 +716,7 @@ NTSTATUS unix_convert(TALLOC_CTX *ctx,
+ 				 * here.
+ 				 */
+ 				if (errno == EACCES) {
+-					if ((ucf_flags & UCF_CREATING_FILE) == 0) {
++					if ((ucf_flags & UCF_PREP_CREATEFILE) == 0) {
+ 						status = NT_STATUS_ACCESS_DENIED;
+ 						goto fail;
+ 					} else {
+diff --git a/source3/smbd/nttrans.c b/source3/smbd/nttrans.c
+index 5c97b438170..08f0db1b34e 100644
+--- a/source3/smbd/nttrans.c
++++ b/source3/smbd/nttrans.c
+@@ -537,7 +537,7 @@ void reply_ntcreate_and_X(struct smb_request *req)
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+ 				(create_disposition == FILE_CREATE)
+-					? UCF_CREATING_FILE : 0,
++				  ? UCF_PREP_CREATEFILE : 0,
+ 				NULL,
+ 				&smb_fname);
+ 
+@@ -1173,7 +1173,7 @@ static void call_nt_transact_create(connection_struct *conn,
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+ 				(create_disposition == FILE_CREATE)
+-					? UCF_CREATING_FILE : 0,
++				  ? UCF_PREP_CREATEFILE : 0,
+ 				NULL,
+ 				&smb_fname);
+ 
+diff --git a/source3/smbd/reply.c b/source3/smbd/reply.c
+index 2acc4c1510c..438b16d4b39 100644
+--- a/source3/smbd/reply.c
++++ b/source3/smbd/reply.c
+@@ -1761,7 +1761,7 @@ void reply_open(struct smb_request *req)
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+ 				(create_disposition == FILE_CREATE)
+-					? UCF_CREATING_FILE : 0,
++				  ? UCF_PREP_CREATEFILE : 0,
+ 				NULL,
+ 				&smb_fname);
+ 	if (!NT_STATUS_IS_OK(status)) {
+@@ -1939,7 +1939,7 @@ void reply_open_and_X(struct smb_request *req)
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+ 				(create_disposition == FILE_CREATE)
+-					? UCF_CREATING_FILE : 0,
++				  ? UCF_PREP_CREATEFILE : 0,
+ 				NULL,
+ 				&smb_fname);
+ 	if (!NT_STATUS_IS_OK(status)) {
+@@ -2147,7 +2147,7 @@ void reply_mknew(struct smb_request *req)
+ 				conn,
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+-				UCF_CREATING_FILE,
++				UCF_PREP_CREATEFILE,
+ 				NULL,
+ 				&smb_fname);
+ 	if (!NT_STATUS_IS_OK(status)) {
+@@ -2288,7 +2288,7 @@ void reply_ctemp(struct smb_request *req)
+ 		status = filename_convert(ctx, conn,
+ 				req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				fname,
+-				UCF_CREATING_FILE,
++				UCF_PREP_CREATEFILE,
+ 				NULL,
+ 				&smb_fname);
+ 		if (!NT_STATUS_IS_OK(status)) {
+@@ -5591,7 +5591,7 @@ void reply_mkdir(struct smb_request *req)
+ 	status = filename_convert(ctx, conn,
+ 				 req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 				 directory,
+-				 UCF_CREATING_FILE,
++				 UCF_PREP_CREATEFILE,
+ 				 NULL,
+ 				 &smb_dname);
+ 	if (!NT_STATUS_IS_OK(status)) {
+diff --git a/source3/smbd/smb2_create.c b/source3/smbd/smb2_create.c
+index 08629901427..cd158523b46 100644
+--- a/source3/smbd/smb2_create.c
++++ b/source3/smbd/smb2_create.c
+@@ -695,7 +695,7 @@ static struct tevent_req *smbd_smb2_create_send(TALLOC_CTX *mem_ctx,
+ 					  smb1req->flags2 & FLAGS2_DFS_PATHNAMES,
+ 					  fname,
+ 					  (in_create_disposition == FILE_CREATE) ?
+-						UCF_CREATING_FILE : 0,
++						  UCF_PREP_CREATEFILE : 0,
+ 					  NULL,
+ 					  &smb_fname);
+ 		if (!NT_STATUS_IS_OK(status)) {
+-- 
+2.14.3
+

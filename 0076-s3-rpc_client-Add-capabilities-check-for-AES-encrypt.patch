@@ -1,0 +1,307 @@
+From 7aa20d4fcb8453b088c821e55c1ebe7ab177221e Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 2 Jan 2012 18:54:47 +0100
+Subject: [PATCH 076/321] s3-rpc_client: Add capabilities check for AES
+ encrypted connections.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+---
+ source3/Makefile.in           |  32 ++++++---
+ source3/rpc_client/cli_pipe.c | 159 +++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 182 insertions(+), 9 deletions(-)
+
+diff --git a/source3/Makefile.in b/source3/Makefile.in
+index d39cfee7185..2668a6b9d1d 100644
+--- a/source3/Makefile.in
++++ b/source3/Makefile.in
+@@ -988,7 +988,9 @@ SWAT_OBJ = $(SWAT_OBJ1) $(PARAM_OBJ) $(PRINTING_OBJ) $(PRINTBASE_OBJ) $(LIBSMB_O
+ 	   $(POPT_LIB_OBJ) $(SMBLDAP_OBJ) $(LIBMSRPC_GEN_OBJ) $(LIBMSRPC_OBJ) \
+            $(PASSCHANGE_OBJ) $(FNAME_UTIL_OBJ) \
+ 	   $(LIBCLI_SAMR_OBJ) \
+-	   rpc_client/init_lsa.o
++	   $(LIBCLI_NETLOGON_OBJ) \
++	   rpc_client/init_lsa.o \
++	   rpc_client/init_netlogon.o
+ 
+ STATUS_OBJ = utils/status.o utils/status_profile.o \
+ 	     $(LOCKING_OBJ) $(PARAM_OBJ) \
+@@ -1004,7 +1006,9 @@ SMBTREE_OBJ = utils/smbtree.o $(PARAM_OBJ) \
+ 	     $(PASSDB_OBJ) $(SMBLDAP_OBJ) $(GROUPDB_OBJ) \
+ 	     $(LIBMSRPC_GEN_OBJ) \
+ 	     $(LIBMSRPC_OBJ) \
+-	     $(LIBCLI_SRVSVC_OBJ)
++	     $(LIBCLI_SRVSVC_OBJ) \
++	     $(LIBCLI_NETLOGON_OBJ) \
++	     rpc_client/init_netlogon.o
+ 
+ TESTPARM_OBJ = utils/testparm.o \
+                $(PARAM_OBJ) $(LIB_NONSMBD_OBJ) $(POPT_LIB_OBJ) \
+@@ -1026,7 +1030,9 @@ SMBPASSWD_OBJ = utils/smbpasswd.o $(PASSWD_UTIL_OBJ) $(PASSCHANGE_OBJ) \
+ 		$(POPT_LIB_OBJ) $(SMBLDAP_OBJ) \
+ 		$(LIBMSRPC_GEN_OBJ) $(LIBMSRPC_OBJ) \
+ 		$(LIBCLI_SAMR_OBJ) \
+-		rpc_client/init_lsa.o
++		$(LIBCLI_NETLOGON_OBJ) \
++		rpc_client/init_lsa.o \
++		rpc_client/init_netlogon.o
+ 
+ PDBEDIT_OBJ = utils/pdbedit.o $(PASSWD_UTIL_OBJ) $(PARAM_OBJ) $(PASSDB_OBJ) \
+ 		$(LIBSAMBA_OBJ) $(LIBTSOCKET_OBJ) \
+@@ -1099,7 +1105,9 @@ LIBSMBCLIENT_OBJ1 = $(LIBSMBCLIENT_OBJ0) \
+ 		    $(LIBMSRPC_OBJ) $(LIBMSRPC_GEN_OBJ) \
+ 		    $(PASSDB_OBJ) $(SMBLDAP_OBJ) $(GROUPDB_OBJ) \
+ 		    $(LIBCLI_SRVSVC_OBJ) \
+-		    $(LIBCLI_LSA_OBJ)
++		    $(LIBCLI_LSA_OBJ) \
++		    $(LIBCLI_NETLOGON_OBJ) \
++		    rpc_client/init_netlogon.o
+ 
+ LIBSMBCLIENT_OBJ = $(LIBSMBCLIENT_OBJ1)
+ 
+@@ -1122,7 +1130,9 @@ CLIENT_OBJ = $(CLIENT_OBJ1) $(PARAM_OBJ) $(LIBSMB_OBJ) \
+              $(READLINE_OBJ) $(POPT_LIB_OBJ) \
+              $(PASSDB_OBJ) $(SMBLDAP_OBJ) $(GROUPDB_OBJ) \
+ 	     $(DISPLAY_SEC_OBJ) \
+-	     $(LIBCLI_SRVSVC_OBJ)
++	     $(LIBCLI_SRVSVC_OBJ) \
++	     $(LIBCLI_NETLOGON_OBJ) \
++	     rpc_client/init_netlogon.o
+ 
+ LIBSMBCONF_OBJ = ../lib/smbconf/smbconf.o \
+ 		 ../lib/smbconf/smbconf_util.o \
+@@ -1234,7 +1244,9 @@ SMBTORTURE_OBJ = $(SMBTORTURE_OBJ1) $(PARAM_OBJ) $(TLDAP_OBJ) \
+ 	@LIBWBCLIENT_STATIC@ \
+         torture/wbc_async.o \
+         ../nsswitch/wb_reqtrans.o \
+-	$(LIBMSRPC_OBJ) $(LIBMSRPC_GEN_OBJ) $(LIBCLI_ECHO_OBJ)
++	$(LIBMSRPC_OBJ) $(LIBMSRPC_GEN_OBJ) $(LIBCLI_ECHO_OBJ) \
++	$(LIBCLI_NETLOGON_OBJ) rpc_client/init_netlogon.o
++
+ 
+ MASKTEST_OBJ = torture/masktest.o $(PARAM_OBJ) $(LIBSMB_OBJ) $(KRBCLIENT_OBJ) \
+                  $(LIB_NONSMBD_OBJ) \
+@@ -1269,14 +1281,18 @@ SMBCACLS_OBJ = utils/smbcacls.o $(PARAM_OBJ) $(LIBSMB_OBJ) \
+ 		$(KRBCLIENT_OBJ) $(LIB_NONSMBD_OBJ) \
+ 		$(PASSDB_OBJ) $(GROUPDB_OBJ) $(LIBMSRPC_OBJ) $(LIBMSRPC_GEN_OBJ) \
+ 		$(POPT_LIB_OBJ) $(SMBLDAP_OBJ) \
+-		$(LIBCLI_LSA_OBJ)
++		$(LIBCLI_LSA_OBJ) \
++		$(LIBCLI_NETLOGON_OBJ) \
++		rpc_client/init_netlogon.o
+ 
+ SMBCQUOTAS_OBJ = utils/smbcquotas.o $(LIBSMB_OBJ) $(KRBCLIENT_OBJ) \
+ 		$(PARAM_OBJ) \
+ 		$(LIB_NONSMBD_OBJ) \
+ 		$(LIBMSRPC_OBJ) $(LIBMSRPC_GEN_OBJ) $(POPT_LIB_OBJ) \
+ 		$(PASSDB_OBJ) $(SMBLDAP_OBJ) $(GROUPDB_OBJ) \
+-		$(LIBCLI_LSA_OBJ)
++		$(LIBCLI_LSA_OBJ) \
++		$(LIBCLI_NETLOGON_OBJ) \
++		rpc_client/init_netlogon.o
+ 
+ EVTLOGADM_OBJ0	= utils/eventlogadm.o
+ 
+diff --git a/source3/rpc_client/cli_pipe.c b/source3/rpc_client/cli_pipe.c
+index 5bf4549d410..6663656aec2 100644
+--- a/source3/rpc_client/cli_pipe.c
++++ b/source3/rpc_client/cli_pipe.c
+@@ -28,6 +28,7 @@
+ #include "../libcli/auth/ntlmssp.h"
+ #include "ntlmssp_wrap.h"
+ #include "librpc/gen_ndr/ndr_dcerpc.h"
++#include "librpc/gen_ndr/ndr_netlogon_c.h"
+ #include "librpc/rpc/dcerpc.h"
+ #include "librpc/crypto/gse.h"
+ #include "librpc/crypto/spnego.h"
+@@ -1826,9 +1827,15 @@ struct rpc_pipe_bind_state {
+ 	DATA_BLOB rpc_out;
+ 	bool auth3;
+ 	uint32_t rpc_call_id;
++	struct netr_Authenticator auth;
++	struct netr_Authenticator return_auth;
++	struct netlogon_creds_CredentialState *creds;
++	union netr_Capabilities capabilities;
++	struct netr_LogonGetCapabilities r;
+ };
+ 
+ static void rpc_pipe_bind_step_one_done(struct tevent_req *subreq);
++static void rpc_pipe_bind_step_two_trigger(struct tevent_req *req);
+ static NTSTATUS rpc_bind_next_send(struct tevent_req *req,
+ 				   struct rpc_pipe_bind_state *state,
+ 				   DATA_BLOB *credentials);
+@@ -1932,11 +1939,14 @@ static void rpc_pipe_bind_step_one_done(struct tevent_req *subreq)
+ 
+ 	case DCERPC_AUTH_TYPE_NONE:
+ 	case DCERPC_AUTH_TYPE_NCALRPC_AS_SYSTEM:
+-	case DCERPC_AUTH_TYPE_SCHANNEL:
+ 		/* Bind complete. */
+ 		tevent_req_done(req);
+ 		return;
+ 
++	case DCERPC_AUTH_TYPE_SCHANNEL:
++		rpc_pipe_bind_step_two_trigger(req);
++		return;
++
+ 	case DCERPC_AUTH_TYPE_NTLMSSP:
+ 	case DCERPC_AUTH_TYPE_SPNEGO:
+ 	case DCERPC_AUTH_TYPE_KRB5:
+@@ -2048,6 +2058,153 @@ err_out:
+ 	tevent_req_nterror(req, NT_STATUS_INTERNAL_ERROR);
+ }
+ 
++static void rpc_pipe_bind_step_two_done(struct tevent_req *subreq);
++
++static void rpc_pipe_bind_step_two_trigger(struct tevent_req *req)
++{
++	struct rpc_pipe_bind_state *state =
++		tevent_req_data(req,
++				struct rpc_pipe_bind_state);
++	struct dcerpc_binding_handle *b = state->cli->binding_handle;
++	struct schannel_state *schannel_auth =
++		talloc_get_type_abort(state->cli->auth->auth_ctx,
++				      struct schannel_state);
++	struct tevent_req *subreq;
++
++	if (schannel_auth == NULL ||
++	    !ndr_syntax_id_equal(&state->cli->abstract_syntax,
++				 &ndr_table_netlogon.syntax_id)) {
++		tevent_req_done(req);
++		return;
++	}
++
++	ZERO_STRUCT(state->return_auth);
++
++	state->creds = netlogon_creds_copy(state, schannel_auth->creds);
++	if (state->creds == NULL) {
++		tevent_req_nterror(req, NT_STATUS_NO_MEMORY);
++		return;
++	}
++
++	netlogon_creds_client_authenticator(state->creds, &state->auth);
++
++	state->r.in.server_name = state->cli->srv_name_slash;
++	state->r.in.computer_name = state->creds->computer_name;
++	state->r.in.credential = &state->auth;
++	state->r.in.query_level = 1;
++	state->r.in.return_authenticator = &state->return_auth;
++
++	state->r.out.capabilities = &state->capabilities;
++	state->r.out.return_authenticator = &state->return_auth;
++
++	subreq = dcerpc_netr_LogonGetCapabilities_r_send(talloc_tos(),
++							 state->ev,
++							 b,
++							 &state->r);
++	if (subreq == NULL) {
++		tevent_req_nterror(req, NT_STATUS_NO_MEMORY);
++		return;
++	}
++
++	tevent_req_set_callback(subreq, rpc_pipe_bind_step_two_done, req);
++	return;
++}
++
++static void rpc_pipe_bind_step_two_done(struct tevent_req *subreq)
++{
++	struct tevent_req *req =
++		tevent_req_callback_data(subreq,
++					 struct tevent_req);
++	struct rpc_pipe_bind_state *state =
++		tevent_req_data(req,
++				struct rpc_pipe_bind_state);
++	struct schannel_state *schannel_auth =
++		talloc_get_type_abort(state->cli->auth->auth_ctx,
++				      struct schannel_state);
++	NTSTATUS status;
++
++	status = dcerpc_netr_LogonGetCapabilities_r_recv(subreq, talloc_tos());
++	TALLOC_FREE(subreq);
++	if (NT_STATUS_EQUAL(status, NT_STATUS_RPC_PROCNUM_OUT_OF_RANGE)) {
++		if (state->cli->dc->negotiate_flags &
++		    NETLOGON_NEG_SUPPORTS_AES) {
++			DEBUG(5, ("AES is not supported and the error was %s\n",
++				  nt_errstr(status)));
++			tevent_req_nterror(req,
++					   NT_STATUS_INVALID_NETWORK_RESPONSE);
++			return;
++		}
++
++		/* This is probably NT */
++		DEBUG(5, ("We are checking against an NT - %s\n",
++			  nt_errstr(status)));
++		tevent_req_done(req);
++		return;
++	} else if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(0, ("dcerpc_netr_LogonGetCapabilities_r_recv failed with %s\n",
++			  nt_errstr(status)));
++		tevent_req_nterror(req, status);
++		return;
++	}
++
++	if (NT_STATUS_EQUAL(state->r.out.result, NT_STATUS_NOT_IMPLEMENTED)) {
++		if (state->creds->negotiate_flags & NETLOGON_NEG_SUPPORTS_AES) {
++			/* This means AES isn't supported. */
++			DEBUG(5, ("AES is not supported and the error was %s\n",
++				  nt_errstr(state->r.out.result)));
++			tevent_req_nterror(req,
++					   NT_STATUS_INVALID_NETWORK_RESPONSE);
++			return;
++		}
++
++		/* This is probably an old Samba version */
++		DEBUG(5, ("We are checking against an old Samba version - %s\n",
++			  nt_errstr(state->r.out.result)));
++		tevent_req_done(req);
++		return;
++	}
++
++	/* We need to check the credential state here, cause win2k3 and earlier
++	 * returns NT_STATUS_NOT_IMPLEMENTED */
++	if (!netlogon_creds_client_check(state->creds,
++					 &state->r.out.return_authenticator->cred)) {
++		/*
++		 * Server replied with bad credential. Fail.
++		 */
++		DEBUG(0,("rpc_pipe_bind_step_two_done: server %s "
++			 "replied with bad credential\n",
++			 state->cli->desthost));
++		tevent_req_nterror(req, NT_STATUS_UNSUCCESSFUL);
++		return;
++	}
++
++	TALLOC_FREE(schannel_auth->creds);
++	schannel_auth->creds = talloc_steal(state->cli, state->creds);
++
++	if (!NT_STATUS_IS_OK(state->r.out.result)) {
++		DEBUG(0, ("dcerpc_netr_LogonGetCapabilities_r_recv failed with %s\n",
++			  nt_errstr(state->r.out.result)));
++		tevent_req_nterror(req, state->r.out.result);
++		return;
++	}
++
++	if (state->creds->negotiate_flags !=
++	    state->r.out.capabilities->server_capabilities) {
++		DEBUG(0, ("The client capabilities don't match the server "
++			  "capabilities: local[0x%08X] remote[0x%08X]\n",
++			  state->creds->negotiate_flags,
++			  state->capabilities.server_capabilities));
++		tevent_req_nterror(req,
++				   NT_STATUS_INVALID_NETWORK_RESPONSE);
++		return;
++	}
++
++	/* TODO: Add downgrade dectection. */
++
++	tevent_req_done(req);
++	return;
++}
++
+ static NTSTATUS rpc_bind_next_send(struct tevent_req *req,
+ 				   struct rpc_pipe_bind_state *state,
+ 				   DATA_BLOB *auth_token)
+-- 
+2.14.3
+

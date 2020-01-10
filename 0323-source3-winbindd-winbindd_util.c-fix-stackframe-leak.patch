@@ -1,0 +1,39 @@
+From e6b4bfd061dc5d03755db985a99d7a0cf831ec04 Mon Sep 17 00:00:00 2001
+From: Rusty Russell <rusty@rustcorp.com.au>
+Date: Wed, 18 Jul 2012 05:01:31 +0930
+Subject: [PATCH 323/324] source3/winbindd/winbindd_util.c: fix stackframe leak
+
+winbindd_can_contact_domain() doesn't always free its stackframe.
+
+Signed-off-by: Rusty Russell <rusty@rustcorp.com.au>
+---
+ source3/winbindd/winbindd_util.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/source3/winbindd/winbindd_util.c b/source3/winbindd/winbindd_util.c
+index b99fac46911..0f67bf127f0 100644
+--- a/source3/winbindd/winbindd_util.c
++++ b/source3/winbindd/winbindd_util.c
+@@ -1240,7 +1240,8 @@ bool winbindd_can_contact_domain(struct winbindd_domain *domain)
+ 	/* We can contact the domain if it is our primary domain */
+ 
+ 	if (domain->primary) {
+-		return true;
++		ret = true;
++		goto done;
+ 	}
+ 
+ 	/* Trust the TDC cache and not the winbindd_domain flags */
+@@ -1248,7 +1249,8 @@ bool winbindd_can_contact_domain(struct winbindd_domain *domain)
+ 	if ((tdc = wcache_tdc_fetch_domain(frame, domain->name)) == NULL) {
+ 		DEBUG(10,("winbindd_can_contact_domain: %s not found in cache\n",
+ 			  domain->name));
+-		return false;
++		ret = false;
++		goto done;
+ 	}
+ 
+ 	/* Can always contact a domain that is in out forest */
+-- 
+2.14.3
+

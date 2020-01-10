@@ -1,0 +1,150 @@
+From 56b7acfc16d781a7c0a568b384fbdb983063e8e4 Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@samba.org>
+Date: Thu, 10 Jul 2014 00:18:10 +0200
+Subject: [PATCH 271/321] printing: traverse_read the printer list for share
+ updates
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The printcap update procedure involves the background printer process
+obtaining the printcap information from the printing backend, writing
+this to printer_list.tdb, and then notifying all smbd processes of the
+new list. The processes then all attempt to simultaneously traverse
+printer_list.tdb, in order to update their local share lists.
+
+With a large number of printers, and a large number of per-client smbd
+processes, this traversal results in significant lock contention, mostly
+due to the fact that the traversal is unnecessarily done with an
+exclusive (write) lock on the printer_list.tdb database.
+
+This commit changes the share update code path to perform a read-only
+traversal.
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=10652
+
+Reported-by: Alex K <korobkin+samba@gmail.com>
+Reported-by: Franz Pförtsch <franz.pfoertsch@brose.com>
+Signed-off-by: David Disseldorp <ddiss@samba.org>
+---
+ source3/printing/load.c         |  2 +-
+ source3/printing/pcap.c         |  4 ++--
+ source3/printing/pcap.h         |  2 +-
+ source3/printing/printer_list.c | 17 +++++++++++------
+ source3/printing/printer_list.h |  4 ++--
+ 5 files changed, 17 insertions(+), 12 deletions(-)
+
+diff --git a/source3/printing/load.c b/source3/printing/load.c
+index 829c3e32e40..0a3de73bb46 100644
+--- a/source3/printing/load.c
++++ b/source3/printing/load.c
+@@ -70,5 +70,5 @@ void load_printers(struct tevent_context *ev,
+ 
+ 	/* load all printcap printers */
+ 	if (lp_load_printers() && lp_servicenumber(PRINTERS_NAME) >= 0)
+-		pcap_printer_fn(lp_add_one_printer, NULL);
++		pcap_printer_read_fn(lp_add_one_printer, NULL);
+ }
+diff --git a/source3/printing/pcap.c b/source3/printing/pcap.c
+index 62db4f5efc1..6ad8e33edd7 100644
+--- a/source3/printing/pcap.c
++++ b/source3/printing/pcap.c
+@@ -229,11 +229,11 @@ void pcap_printer_fn_specific(const struct pcap_cache *pc,
+ 	return;
+ }
+ 
+-void pcap_printer_fn(void (*fn)(const char *, const char *, const char *, void *), void *pdata)
++void pcap_printer_read_fn(void (*fn)(const char *, const char *, const char *, void *), void *pdata)
+ {
+ 	NTSTATUS status;
+ 
+-	status = printer_list_run_fn(fn, pdata);
++	status = printer_list_read_run_fn(fn, pdata);
+ 	if (!NT_STATUS_IS_OK(status)) {
+ 		DEBUG(3, ("Failed to run fn for all printers!\n"));
+ 	}
+diff --git a/source3/printing/pcap.h b/source3/printing/pcap.h
+index 70562137ac8..6c062c3294e 100644
+--- a/source3/printing/pcap.h
++++ b/source3/printing/pcap.h
+@@ -39,7 +39,7 @@ bool pcap_cache_add(const char *name, const char *comment, const char *location)
+ bool pcap_cache_loaded(void);
+ bool pcap_cache_replace(const struct pcap_cache *cache);
+ void pcap_printer_fn_specific(const struct pcap_cache *, void (*fn)(const char *, const char *, const char *, void *), void *);
+-void pcap_printer_fn(void (*fn)(const char *, const char *, const char *, void *), void *);
++void pcap_printer_read_fn(void (*fn)(const char *, const char *, const char *, void *), void *);
+ 
+ void pcap_cache_reload(struct tevent_context *ev,
+ 		       struct messaging_context *msg_ctx,
+diff --git a/source3/printing/printer_list.c b/source3/printing/printer_list.c
+index 603ce4b5323..b24bf831f98 100644
+--- a/source3/printing/printer_list.c
++++ b/source3/printing/printer_list.c
+@@ -280,7 +280,8 @@ done:
+ typedef int (printer_list_trv_fn_t)(struct db_record *, void *);
+ 
+ static NTSTATUS printer_list_traverse(printer_list_trv_fn_t *fn,
+-						void *private_data)
++				      void *private_data,
++				      bool read_only)
+ {
+ 	struct db_context *db;
+ 	int ret;
+@@ -290,7 +291,11 @@ static NTSTATUS printer_list_traverse(printer_list_trv_fn_t *fn,
+ 		return NT_STATUS_INTERNAL_DB_CORRUPTION;
+ 	}
+ 
+-	ret = db->traverse(db, fn, private_data);
++	if (read_only) {
++		ret = db->traverse_read(db, fn, private_data);
++	} else {
++		ret = db->traverse(db, fn, private_data);
++	}
+ 	if (ret < 0) {
+ 		return NT_STATUS_UNSUCCESSFUL;
+ 	}
+@@ -357,7 +362,7 @@ NTSTATUS printer_list_clean_old(void)
+ 
+ 	state.status = NT_STATUS_OK;
+ 
+-	status = printer_list_traverse(printer_list_clean_fn, &state);
++	status = printer_list_traverse(printer_list_clean_fn, &state, false);
+ 	if (NT_STATUS_EQUAL(status, NT_STATUS_UNSUCCESSFUL) &&
+ 	    !NT_STATUS_IS_OK(state.status)) {
+ 		status = state.status;
+@@ -404,8 +409,8 @@ static int printer_list_exec_fn(struct db_record *rec, void *private_data)
+ 	return 0;
+ }
+ 
+-NTSTATUS printer_list_run_fn(void (*fn)(const char *, const char *, const char *, void *),
+-			     void *private_data)
++NTSTATUS printer_list_read_run_fn(void (*fn)(const char *, const char *, const char *, void *),
++				  void *private_data)
+ {
+ 	struct printer_list_exec_state state;
+ 	NTSTATUS status;
+@@ -414,7 +419,7 @@ NTSTATUS printer_list_run_fn(void (*fn)(const char *, const char *, const char *
+ 	state.private_data = private_data;
+ 	state.status = NT_STATUS_OK;
+ 
+-	status = printer_list_traverse(printer_list_exec_fn, &state);
++	status = printer_list_traverse(printer_list_exec_fn, &state, true);
+ 	if (NT_STATUS_EQUAL(status, NT_STATUS_UNSUCCESSFUL) &&
+ 	    !NT_STATUS_IS_OK(state.status)) {
+ 		status = state.status;
+diff --git a/source3/printing/printer_list.h b/source3/printing/printer_list.h
+index fb2e007ae6c..b12c1923e72 100644
+--- a/source3/printing/printer_list.h
++++ b/source3/printing/printer_list.h
+@@ -100,6 +100,6 @@ NTSTATUS printer_list_mark_reload(void);
+  */
+ NTSTATUS printer_list_clean_old(void);
+ 
+-NTSTATUS printer_list_run_fn(void (*fn)(const char *, const char *, const char *, void *),
+-			     void *private_data);
++NTSTATUS printer_list_read_run_fn(void (*fn)(const char *, const char *, const char *, void *),
++				  void *private_data);
+ #endif /* _PRINTER_LIST_H_ */
+-- 
+2.14.3
+

@@ -1,0 +1,54 @@
+From f59cc23084724ba0aaff4cb22a0c8d9bacfa1785 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 24 Nov 2015 15:40:29 +0100
+Subject: [PATCH 049/321] librpc/ndr: add ndr_ntlmssp_find_av() helper function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+Reviewed-by: Günther Deschner <gd@samba.org>
+---
+ librpc/ndr/ndr_ntlmssp.c | 16 ++++++++++++++++
+ librpc/ndr/ndr_ntlmssp.h |  2 ++
+ 2 files changed, 18 insertions(+)
+
+diff --git a/librpc/ndr/ndr_ntlmssp.c b/librpc/ndr/ndr_ntlmssp.c
+index d024da5ed8e..7027ac0b13d 100644
+--- a/librpc/ndr/ndr_ntlmssp.c
++++ b/librpc/ndr/ndr_ntlmssp.c
+@@ -176,4 +176,20 @@ _PUBLIC_ void ndr_print_ntlmssp_Version(struct ndr_print *ndr, const char *name,
+ 	}
+ }
+ 
++_PUBLIC_ struct AV_PAIR *ndr_ntlmssp_find_av(const struct AV_PAIR_LIST *av_list,
++					     enum ntlmssp_AvId AvId)
++{
++	struct AV_PAIR *res = NULL;
++	uint32_t i = 0;
++
++	for (i = 0; i < av_list->count; i++) {
++		if (av_list->pair[i].AvId != AvId) {
++			continue;
++		}
+ 
++		res = discard_const_p(struct AV_PAIR, &av_list->pair[i]);
++		break;
++	}
++
++	return res;
++}
+diff --git a/librpc/ndr/ndr_ntlmssp.h b/librpc/ndr/ndr_ntlmssp.h
+index e07ff15cf6f..5c979ffa4f7 100644
+--- a/librpc/ndr/ndr_ntlmssp.h
++++ b/librpc/ndr/ndr_ntlmssp.h
+@@ -31,3 +31,5 @@ _PUBLIC_ void ndr_print_ntlmssp_lm_response(TALLOC_CTX *mem_ctx,
+ 					    bool ntlmv2);
+ _PUBLIC_ void ndr_print_ntlmssp_Version(struct ndr_print *ndr, const char *name, const union ntlmssp_Version *r);
+ 
++_PUBLIC_ struct AV_PAIR *ndr_ntlmssp_find_av(const struct AV_PAIR_LIST *av_list,
++					     enum ntlmssp_AvId AvId);
+-- 
+2.14.3
+

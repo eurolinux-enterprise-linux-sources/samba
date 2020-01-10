@@ -1,0 +1,37 @@
+From 0683d5c66a4340114fa5c8a15def0be48d08e520 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 16 Feb 2015 10:56:03 +0100
+Subject: [PATCH 028/321] auth: Make sure that creds_out is initialized with
+ NULL.
+
+This is an additional patch for CVE-2015-0240.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=11077#c32
+
+Pair-Programmed-With: Michael Adam <obnox@samba.org>
+Pair-Programmed-With: Andreas Schneider <asn@samba.org>
+Signed-off-by: Michael Adam <obnox@samba.org>
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Volker Lendecke <vl@samba.org>
+---
+ libcli/auth/schannel_state_tdb.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/libcli/auth/schannel_state_tdb.c b/libcli/auth/schannel_state_tdb.c
+index ca35a11abe0..145005c3a8d 100644
+--- a/libcli/auth/schannel_state_tdb.c
++++ b/libcli/auth/schannel_state_tdb.c
+@@ -285,6 +285,10 @@ NTSTATUS schannel_check_creds_state(TALLOC_CTX *mem_ctx,
+ 	NTSTATUS status;
+ 	int ret;
+ 
++	if (creds_out != NULL) {
++		*creds_out = NULL;
++	}
++
+ 	tmpctx = talloc_named(mem_ctx, 0, "schannel_check_creds_state");
+ 	if (!tmpctx) {
+ 		return NT_STATUS_NO_MEMORY;
+-- 
+2.14.3
+

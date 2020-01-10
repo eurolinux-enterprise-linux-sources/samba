@@ -1,0 +1,32 @@
+From 2a826da5983410f196189713174cf3590c15b655 Mon Sep 17 00:00:00 2001
+From: Volker Lendecke <vl@samba.org>
+Date: Tue, 25 Oct 2016 12:28:12 +0200
+Subject: [PATCH 310/321] lib/util/charset: Optimize next_codepoint for the
+ ascii case
+
+Signed-off-by: Volker Lendecke <vl@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+
+(cherry picked from commit 07d9a909ba6853fb0b96f6d86e4cf0d5d1b35b28)
+---
+ lib/util/charset/codepoints.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/lib/util/charset/codepoints.c b/lib/util/charset/codepoints.c
+index cf5f3e67987..1cf566a3bc7 100644
+--- a/lib/util/charset/codepoints.c
++++ b/lib/util/charset/codepoints.c
+@@ -505,6 +505,10 @@ _PUBLIC_ codepoint_t next_codepoint_ext(const char *str, size_t len,
+ 
+ _PUBLIC_ codepoint_t next_codepoint(const char *str, size_t *size)
+ {
++	if ((str[0] & 0x80) == 0) {
++		*size = 1;
++		return str[0];
++	}
+ 	return next_codepoint_convenience(get_iconv_convenience(), str, size);
+ }
+ 
+-- 
+2.14.3
+

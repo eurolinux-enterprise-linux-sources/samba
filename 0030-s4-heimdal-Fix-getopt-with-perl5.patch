@@ -1,0 +1,36 @@
+From b4286249e85c8cb21943b7e488a193d06b834a0b Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 1 Apr 2016 14:53:59 +0200
+Subject: [PATCH 030/321] s4:heimdal: Fix getopt with perl5
+
+---
+ source4/heimdal/cf/make-proto.pl | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/source4/heimdal/cf/make-proto.pl b/source4/heimdal/cf/make-proto.pl
+index bc323b9433e..feee18aea21 100644
+--- a/source4/heimdal/cf/make-proto.pl
++++ b/source4/heimdal/cf/make-proto.pl
+@@ -1,8 +1,8 @@
+ # Make prototypes from .c files
+ # $Id$
+ 
+-##use Getopt::Std;
+-require 'getopts.pl';
++use Getopt::Std;
++#require 'getopts.pl';
+ 
+ my $comment = 0;
+ my $if_0 = 0;
+@@ -12,7 +12,7 @@ my $debug = 0;
+ my $oproto = 1;
+ my $private_func_re = "^_";
+ 
+-Getopts('x:m:o:p:dqE:R:P:') || die "foo";
++getopts('x:m:o:p:dqE:R:P:') || die "foo";
+ 
+ if($opt_d) {
+     $debug = 1;
+-- 
+2.14.3
+

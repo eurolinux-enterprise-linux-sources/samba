@@ -1,0 +1,46 @@
+From c262ba00ba7096751a4764e6802d509b13ad8589 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 27 Nov 2013 17:21:01 +0100
+Subject: [PATCH 212/321] s3-lib: Fix %G substitution for domain users in smbd
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=10286
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Christian Ambach <ambi@samba.org>
+
+Autobuild-User(master): Christian Ambach <ambi@samba.org>
+Autobuild-Date(master): Tue Dec 10 16:39:43 CET 2013 on sn-devel-104
+
+(cherry picked from commit 8eef4ab79ec5fb7e96ad2f2ad6c9bf30db13a50d)
+---
+ source3/lib/substitute.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/source3/lib/substitute.c b/source3/lib/substitute.c
+index 10beed74d8c..5f72a5dcf61 100644
+--- a/source3/lib/substitute.c
++++ b/source3/lib/substitute.c
+@@ -605,10 +605,20 @@ static char *alloc_sub_basic(const char *smb_name, const char *domain_name,
+ 			break;
+ 		case 'G' : {
+ 			struct passwd *pass;
+-			r = talloc_strdup(tmp_ctx, smb_name);
++
++			if (domain_name != NULL && domain_name[0] != '\0') {
++				r = talloc_asprintf(tmp_ctx,
++						    "%s%c%s",
++						    domain_name,
++						    *lp_winbind_separator(),
++						    smb_name);
++			} else {
++				r = talloc_strdup(tmp_ctx, smb_name);
++			}
+ 			if (r == NULL) {
+ 				goto error;
+ 			}
++
+ 			pass = Get_Pwnam_alloc(tmp_ctx, r);
+ 			if (pass != NULL) {
+ 				a_string = realloc_string_sub(
+-- 
+2.14.3
+

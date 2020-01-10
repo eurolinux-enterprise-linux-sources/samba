@@ -1,0 +1,72 @@
+From b7aa45a92dee7f3091e7a1bbf23047c5a5e1917c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Fri, 15 Jan 2016 14:46:07 +0100
+Subject: [PATCH 299/321] security: Add Asserted Identity sids (S-1-18)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=11677
+
+definitions taken from [MS-DTYP]: Windows Data Types,
+2.4.2.4 Well-Known SID Structures.
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+---
+ libcli/security/dom_sid.h  | 3 +++
+ libcli/security/util_sid.c | 8 ++++++++
+ librpc/idl/security.idl    | 3 +++
+ 3 files changed, 14 insertions(+)
+
+diff --git a/libcli/security/dom_sid.h b/libcli/security/dom_sid.h
+index 04571c21dec..503b621a17f 100644
+--- a/libcli/security/dom_sid.h
++++ b/libcli/security/dom_sid.h
+@@ -35,6 +35,9 @@ extern const struct dom_sid global_sid_System;
+ extern const struct dom_sid global_sid_NULL;
+ extern const struct dom_sid global_sid_Authenticated_Users;
+ extern const struct dom_sid global_sid_Network;
++extern const struct dom_sid global_sid_Asserted_Identity;
++extern const struct dom_sid global_sid_Asserted_Identity_Service;
++extern const struct dom_sid global_sid_Asserted_Identity_Authentication_Authority;
+ extern const struct dom_sid global_sid_Creator_Owner;
+ extern const struct dom_sid global_sid_Creator_Group;
+ extern const struct dom_sid global_sid_Anonymous;
+diff --git a/libcli/security/util_sid.c b/libcli/security/util_sid.c
+index cf1f7f368fd..5a41ef73803 100644
+--- a/libcli/security/util_sid.c
++++ b/libcli/security/util_sid.c
+@@ -53,6 +53,14 @@ const struct dom_sid global_sid_Authenticated_Users =	/* All authenticated rids
+ const struct dom_sid global_sid_Restriced =			/* Restriced Code */
+ { 1, 1, {0,0,0,0,0,5}, {12,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+ #endif
++
++const struct dom_sid global_sid_Asserted_Identity =       /* Asserted Identity */
++{ 1, 0, {0,0,0,0,0,18}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
++const struct dom_sid global_sid_Asserted_Identity_Service =	/* Asserted Identity Service */
++{ 1, 1, {0,0,0,0,0,18}, {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
++const struct dom_sid global_sid_Asserted_Identity_Authentication_Authority =	/* Asserted Identity Authentication Authority */
++{ 1, 1, {0,0,0,0,0,18}, {2,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
++
+ const struct dom_sid global_sid_Network =			/* Network rids */
+ { 1, 1, {0,0,0,0,0,5}, {2,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+ 
+diff --git a/librpc/idl/security.idl b/librpc/idl/security.idl
+index 0ea79a32b2a..7df773e1c8d 100644
+--- a/librpc/idl/security.idl
++++ b/librpc/idl/security.idl
+@@ -277,6 +277,9 @@ interface security
+ 	const string SID_NT_TRUSTED_INSTALLER =
+ 		"S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464";
+ 
++	const string SID_AUTHENTICATION_AUTHORITY_ASSERTED_IDENTITY = "S-1-18-1";
++	const string SID_SERVICE_ASSERTED_IDENTITY = "S-1-18-2";
++
+ 	/* well-known domain RIDs */
+ 	const int DOMAIN_RID_LOGON                   = 9;
+ 	const int DOMAIN_RID_ENTERPRISE_READONLY_DCS = 498;
+-- 
+2.14.3
+

@@ -1,0 +1,64 @@
+From 183c9fb77947d8cc129e256834577c86fb8a8673 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 24 Jan 2018 16:11:18 +0100
+Subject: [PATCH 228/321] s3:smbd: Detect broken inotify
+
+This works around a SELinux policy bug.
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ source3/smbd/notify_inotify.c | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/source3/smbd/notify_inotify.c b/source3/smbd/notify_inotify.c
+index bccd093be4c..4a876f3fded 100644
+--- a/source3/smbd/notify_inotify.c
++++ b/source3/smbd/notify_inotify.c
+@@ -77,6 +77,7 @@ struct inotify_private {
+ 	struct sys_notify_context *ctx;
+ 	int fd;
+ 	struct inotify_watch_context *watches;
++	bool broken_inotify;	/* Late stop for broken system */
+ };
+ 
+ struct inotify_watch_context {
+@@ -241,8 +242,15 @@ static void inotify_handler(struct event_context *ev, struct fd_event *fde,
+ 	  filenames, and thus can't know how much to allocate
+ 	  otherwise
+ 	*/
+-	if (ioctl(in->fd, FIONREAD, &bufsize) != 0 || 
+-	    bufsize == 0) {
++	if ((ioctl(in->fd, FIONREAD, &bufsize) != 0) && (errno == EACCES)) {
++		/*
++		 * Workaround for broken system (SELinux policy bug fixed since long but it is always better not to loop on EACCES)
++		 */
++		TALLOC_FREE(fde);
++		in->broken_inotify = True;
++		return;
++	}
++	if (bufsize == 0) {
+ 		DEBUG(0,("No data on inotify fd?!\n"));
+ 		TALLOC_FREE(fde);
+ 		return;
+@@ -300,6 +308,7 @@ static NTSTATUS inotify_setup(struct sys_notify_context *ctx)
+ 	}
+ 	in->ctx = ctx;
+ 	in->watches = NULL;
++	in->broken_inotify = False;
+ 
+ 	ctx->private_data = in;
+ 	talloc_set_destructor(in, inotify_destructor);
+@@ -394,6 +403,10 @@ NTSTATUS inotify_watch(struct sys_notify_context *ctx,
+ 
+ 	in = talloc_get_type(ctx->private_data, struct inotify_private);
+ 
++	if (in->broken_inotify) {
++		return NT_STATUS_OK;
++	}
++
+ 	mask = inotify_map(e);
+ 	if (mask == 0) {
+ 		/* this filter can't be handled by inotify */
+-- 
+2.14.3
+

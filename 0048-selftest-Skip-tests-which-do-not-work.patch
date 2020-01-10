@@ -1,0 +1,25 @@
+From 363522ef632332b1bd430bc5bd97a1ae8e756f87 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 1 Apr 2016 16:44:23 +0200
+Subject: [PATCH 048/321] selftest: Skip tests which do not work
+
+---
+ source3/selftest/skip | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/source3/selftest/skip b/source3/selftest/skip
+index b4de81891ab..9d88dc8b910 100644
+--- a/source3/selftest/skip
++++ b/source3/selftest/skip
+@@ -22,3 +22,8 @@ samba3.*raw.ioctl
+ samba3.*raw.qfileinfo
+ samba3.*raw.qfsinfo
+ samba3.*raw.sfileinfo.base
++# skip, don't work for badlock backports
++samba3.posix_s3.raw.eas
++samba3.posix_s3.raw.rename
++samba3.posix_s3.raw.search
++samba3.posix_s3.raw.streams
+-- 
+2.14.3
+

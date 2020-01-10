@@ -1,0 +1,72 @@
+From 6e653000bc40f5e23470a464aeceb7f7d23e6bd4 Mon Sep 17 00:00:00 2001
+From: Jeremy Allison <jra@samba.org>
+Date: Mon, 16 Jun 2014 22:49:29 -0700
+Subject: [PATCH 283/321] s3: auth: Add some const to the struct netr_SamInfo3
+ * arguments of copy_netr_SamInfo3() and make_server_info_info3()
+
+Both functions only read from the struct netr_SamInfo3 * argument.
+
+Signed-off-by: Jeremy Allison <jra@samba.org>
+Reviewed-by: Richard Sharpe <realrichardsharpe@gmail.com>
+Reviewed-by: Simo Sorce <idra@samba.org>
+(cherry picked from commit c2411767adb5ce48a4619349075f6f8faae41aab)
+
+Conflicts:
+	source3/auth/proto.h
+---
+ source3/auth/auth_util.c   | 2 +-
+ source3/auth/proto.h       | 4 ++--
+ source3/auth/server_info.c | 2 +-
+ 3 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index 10917b6c924..7534ad547e9 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -1209,7 +1209,7 @@ NTSTATUS make_server_info_info3(TALLOC_CTX *mem_ctx,
+ 				const char *sent_nt_username,
+ 				const char *domain,
+ 				struct auth_serversupplied_info **server_info,
+-				struct netr_SamInfo3 *info3)
++				const struct netr_SamInfo3 *info3)
+ {
+ 	static const char zeros[16] = {0, };
+ 
+diff --git a/source3/auth/proto.h b/source3/auth/proto.h
+index fccabc44c5a..c851722155b 100644
+--- a/source3/auth/proto.h
++++ b/source3/auth/proto.h
+@@ -173,7 +173,7 @@ NTSTATUS make_server_info_info3(TALLOC_CTX *mem_ctx,
+ 				const char *sent_nt_username,
+ 				const char *domain,
+ 				struct auth_serversupplied_info **server_info,
+-				struct netr_SamInfo3 *info3);
++				const struct netr_SamInfo3 *info3);
+ struct wbcAuthUserInfo;
+ NTSTATUS make_server_info_wbcAuthUserInfo(TALLOC_CTX *mem_ctx,
+ 					  const char *sent_nt_username,
+@@ -233,7 +233,7 @@ NTSTATUS passwd_to_SamInfo3(TALLOC_CTX *mem_ctx,
+ 			    const struct passwd *pwd,
+ 			    struct netr_SamInfo3 **pinfo3);
+ struct netr_SamInfo3 *copy_netr_SamInfo3(TALLOC_CTX *mem_ctx,
+-					 struct netr_SamInfo3 *orig);
++					 const struct netr_SamInfo3 *orig);
+ struct netr_SamInfo3 *wbcAuthUserInfo_to_netr_SamInfo3(TALLOC_CTX *mem_ctx,
+ 					const struct wbcAuthUserInfo *info);
+ 
+diff --git a/source3/auth/server_info.c b/source3/auth/server_info.c
+index e627892b3ee..63b49896069 100644
+--- a/source3/auth/server_info.c
++++ b/source3/auth/server_info.c
+@@ -632,7 +632,7 @@ done:
+ 	} } while(0)
+ 
+ struct netr_SamInfo3 *copy_netr_SamInfo3(TALLOC_CTX *mem_ctx,
+-					 struct netr_SamInfo3 *orig)
++					 const struct netr_SamInfo3 *orig)
+ {
+ 	struct netr_SamInfo3 *info3;
+ 	unsigned int i;
+-- 
+2.14.3
+

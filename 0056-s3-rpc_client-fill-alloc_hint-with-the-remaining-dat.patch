@@ -1,0 +1,29 @@
+From f3c4b01c3177885e4934633f7c7882c2d84da38e Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Sun, 5 Jan 2014 07:57:51 +0100
+Subject: [PATCH 056/321] s3:rpc_client: fill alloc_hint with the remaining
+ data not the total data.
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit f0532fe0cd69aeb161088ca990d376f119102e61)
+---
+ source3/rpc_client/cli_pipe.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/rpc_client/cli_pipe.c b/source3/rpc_client/cli_pipe.c
+index 96364793de3..7d78772d064 100644
+--- a/source3/rpc_client/cli_pipe.c
++++ b/source3/rpc_client/cli_pipe.c
+@@ -1380,7 +1380,7 @@ static NTSTATUS prepare_next_frag(struct rpc_api_pipe_req_state *state,
+ 
+ 	ZERO_STRUCT(u.request);
+ 
+-	u.request.alloc_hint	= state->req_data->length;
++	u.request.alloc_hint	= data_left;
+ 	u.request.context_id	= 0;
+ 	u.request.opnum		= state->op_num;
+ 
+-- 
+2.14.3
+

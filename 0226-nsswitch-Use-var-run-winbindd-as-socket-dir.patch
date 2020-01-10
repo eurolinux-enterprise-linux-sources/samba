@@ -1,0 +1,26 @@
+From efae67b0e9d59572e3f0caf3ca058095152659a9 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 24 Jan 2018 16:08:44 +0100
+Subject: [PATCH 226/321] nsswitch: Use /var/run/winbindd as socket dir
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ nsswitch/winbind_struct_protocol.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/nsswitch/winbind_struct_protocol.h b/nsswitch/winbind_struct_protocol.h
+index e5ed8e1b3a1..c9e3f675666 100644
+--- a/nsswitch/winbind_struct_protocol.h
++++ b/nsswitch/winbind_struct_protocol.h
+@@ -29,7 +29,7 @@ typedef char fstring[FSTRING_LEN];
+  * is needed for launchd support -- jpeach.
+  */
+ #ifndef WINBINDD_SOCKET_DIR
+-#define WINBINDD_SOCKET_DIR  "/tmp/.winbindd"  /* Name of PF_UNIX dir */
++#define WINBINDD_SOCKET_DIR  "/var/run/winbindd"  /* Name of PF_UNIX dir */
+ #endif
+ 
+ /*
+-- 
+2.14.3
+

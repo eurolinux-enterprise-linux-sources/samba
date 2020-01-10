@@ -1,0 +1,42 @@
+From 0c98d77dd5e6641d73b43ff7f03fc2e7beadd849 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@cryptomilk.org>
+Date: Wed, 4 Mar 2015 17:45:39 +0100
+Subject: [PATCH 286/321] s3-winbind: Merge resource groups from a trusted PAC
+ into the sid array.
+
+This is a backport of db775c68ccbed0252abf092b5cb811e8f5fa9bb6.
+---
+ source3/winbindd/winbindd_pam.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/source3/winbindd/winbindd_pam.c b/source3/winbindd/winbindd_pam.c
+index 5316232480b..b1838a6c918 100644
+--- a/source3/winbindd/winbindd_pam.c
++++ b/source3/winbindd/winbindd_pam.c
+@@ -546,6 +546,7 @@ static NTSTATUS winbindd_raw_kerberos_login(TALLOC_CTX *mem_ctx,
+ 	time_t time_offset = 0;
+ 	const char *user_ccache_file;
+ 	struct PAC_LOGON_INFO *logon_info = NULL;
++	struct netr_SamInfo3 *info3_copy = NULL;
+ 
+ 	*info3 = NULL;
+ 
+@@ -624,7 +625,14 @@ static NTSTATUS winbindd_raw_kerberos_login(TALLOC_CTX *mem_ctx,
+ 		goto failed;
+ 	}
+ 
+-	*info3 = &logon_info->info3;
++	result = create_info3_from_pac_logon_info(mem_ctx,
++						  logon_info,
++						  &info3_copy);
++	if (!NT_STATUS_IS_OK(result)) {
++		return result;
++	}
++
++	*info3 = info3_copy;
+ 
+ 	DEBUG(10,("winbindd_raw_kerberos_login: winbindd validated ticket of %s\n",
+ 		principal_s));
+-- 
+2.14.3
+

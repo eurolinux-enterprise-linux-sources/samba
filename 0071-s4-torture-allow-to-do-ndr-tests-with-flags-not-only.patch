@@ -1,0 +1,98 @@
+From aa824c4432c4666108c81c7f81177c87cca3ed78 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Tue, 15 Jan 2013 17:04:08 +0100
+Subject: [PATCH 071/321] s4-torture: allow to do ndr tests with flags, not
+ only ndr_flags.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Guenther
+
+Signed-off-by: Günther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+---
+ source4/torture/ndr/ndr.c |  5 +++++
+ source4/torture/ndr/ndr.h | 12 +++++++++---
+ 2 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/source4/torture/ndr/ndr.c b/source4/torture/ndr/ndr.c
+index 5df25b08861..2a87d149320 100644
+--- a/source4/torture/ndr/ndr.c
++++ b/source4/torture/ndr/ndr.c
+@@ -31,6 +31,7 @@ struct ndr_pull_test_data {
+ 	ndr_pull_flags_fn_t pull_fn;
+ 	ndr_push_flags_fn_t push_fn;
+ 	int ndr_flags;
++	int flags;
+ };
+ 
+ static bool wrap_ndr_pullpush_test(struct torture_context *tctx,
+@@ -43,6 +44,8 @@ static bool wrap_ndr_pullpush_test(struct torture_context *tctx,
+ 	void *ds = talloc_zero_size(ndr, data->struct_size);
+ 	bool ret;
+ 
++	ndr->flags |= data->flags;
++
+ 	ndr->flags |= LIBNDR_FLAG_REF_ALLOC;
+ 
+ 	torture_assert_ndr_success(tctx, data->pull_fn(ndr, data->ndr_flags, ds),
+@@ -76,6 +79,7 @@ _PUBLIC_ struct torture_test *_torture_suite_add_ndr_pullpush_test(
+ 	DATA_BLOB db,
+ 	size_t struct_size,
+ 	int ndr_flags,
++	int flags,
+ 	bool (*check_fn) (struct torture_context *ctx, void *data))
+ {
+ 	struct torture_test *test;
+@@ -93,6 +97,7 @@ _PUBLIC_ struct torture_test *_torture_suite_add_ndr_pullpush_test(
+ 	data = talloc(test, struct ndr_pull_test_data);
+ 	data->data = db;
+ 	data->ndr_flags = ndr_flags;
++	data->flags = flags;
+ 	data->struct_size = struct_size;
+ 	data->pull_fn = pull_fn;
+ 	data->push_fn = push_fn;
+diff --git a/source4/torture/ndr/ndr.h b/source4/torture/ndr/ndr.h
+index ee4db0aa68a..068d5f64633 100644
+--- a/source4/torture/ndr/ndr.h
++++ b/source4/torture/ndr/ndr.h
+@@ -32,6 +32,7 @@ _PUBLIC_ struct torture_test *_torture_suite_add_ndr_pullpush_test(
+ 					DATA_BLOB db,
+ 					size_t struct_size,
+ 					int ndr_flags,
++					int flags,
+ 					bool (*check_fn) (struct torture_context *, void *data));
+ 
+ _PUBLIC_ struct torture_test *_torture_suite_add_ndr_pull_inout_test(
+@@ -45,19 +46,24 @@ _PUBLIC_ struct torture_test *_torture_suite_add_ndr_pull_inout_test(
+ #define torture_suite_add_ndr_pull_test(suite,name,data,check_fn) \
+ 		_torture_suite_add_ndr_pullpush_test(suite, #name, \
+ 			 (ndr_pull_flags_fn_t)ndr_pull_ ## name, NULL, data_blob_const(data, sizeof(data)), \
+-			 sizeof(struct name), NDR_SCALARS|NDR_BUFFERS, (bool (*) (struct torture_context *, void *)) check_fn);
++			 sizeof(struct name), NDR_SCALARS|NDR_BUFFERS, 0, (bool (*) (struct torture_context *, void *)) check_fn);
+ 
+ #define torture_suite_add_ndr_pull_fn_test(suite,name,data,flags,check_fn) \
+ 		_torture_suite_add_ndr_pullpush_test(suite, #name "_" #flags, \
+ 			 (ndr_pull_flags_fn_t)ndr_pull_ ## name, NULL, data_blob_const(data, sizeof(data)), \
+-			 sizeof(struct name), flags, (bool (*) (struct torture_context *, void *)) check_fn);
++			 sizeof(struct name), flags, 0, (bool (*) (struct torture_context *, void *)) check_fn);
++
++#define torture_suite_add_ndr_pull_fn_test_flags(suite,name,data,flags,flags2,check_fn) \
++		_torture_suite_add_ndr_pullpush_test(suite, #name "_" #flags "_" #flags2, \
++			 (ndr_pull_flags_fn_t)ndr_pull_ ## name, NULL, data_blob_const(data, sizeof(data)), \
++			 sizeof(struct name), flags, flags2, (bool (*) (struct torture_context *, void *)) check_fn);
+ 
+ #define torture_suite_add_ndr_pullpush_test(suite,name,data_blob,check_fn) \
+ 		_torture_suite_add_ndr_pullpush_test(suite, #name, \
+ 			 (ndr_pull_flags_fn_t)ndr_pull_ ## name, \
+ 			 (ndr_push_flags_fn_t)ndr_push_ ## name, \
+ 			 data_blob, \
+-			 sizeof(struct name), NDR_SCALARS|NDR_BUFFERS, (bool (*) (struct torture_context *, void *)) check_fn);
++			 sizeof(struct name), NDR_SCALARS|NDR_BUFFERS, 0, (bool (*) (struct torture_context *, void *)) check_fn);
+ 
+ #define torture_suite_add_ndr_pull_io_test(suite,name,data_in,data_out,check_fn_out) \
+ 		_torture_suite_add_ndr_pull_inout_test(suite, #name "_INOUT", \
+-- 
+2.14.3
+

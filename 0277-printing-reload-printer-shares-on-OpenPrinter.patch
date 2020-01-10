@@ -1,0 +1,49 @@
+From 0aac17d7cdd0c5109879ab51fc1da1cfdd0753b8 Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@samba.org>
+Date: Wed, 6 Aug 2014 14:33:02 +0200
+Subject: [PATCH 277/321] printing: reload printer shares on OpenPrinter
+
+The printer share inventory should be reloaded on open _and_
+enumeration, as there are some clients, such as cupsaddsmb, that do not
+perform an enumeration prior to access.
+
+Bug: https://bugzilla.samba.org/show_bug.cgi?id=10652
+
+Signed-off-by: David Disseldorp <ddiss@samba.org>
+---
+ source3/rpc_server/spoolss/srv_spoolss_nt.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/source3/rpc_server/spoolss/srv_spoolss_nt.c b/source3/rpc_server/spoolss/srv_spoolss_nt.c
+index d5d614647c8..86516a59555 100644
+--- a/source3/rpc_server/spoolss/srv_spoolss_nt.c
++++ b/source3/rpc_server/spoolss/srv_spoolss_nt.c
+@@ -1742,6 +1742,16 @@ WERROR _spoolss_OpenPrinterEx(struct pipes_struct *p,
+ 		return WERR_INVALID_PARAM;
+ 	}
+ 
++	/*
++	 * The printcap printer share inventory is updated on client
++	 * enumeration. For clients that do not perform enumeration prior to
++	 * access, such as cupssmbadd, we reinitialise the printer share
++	 * inventory on open as well.
++	 */
++	become_root();
++	reload_printers(messaging_event_context(p->msg_ctx), p->msg_ctx);
++	unbecome_root();
++
+ 	/* some sanity check because you can open a printer or a print server */
+ 	/* aka: \\server\printer or \\server */
+ 
+@@ -4336,7 +4346,7 @@ static WERROR enum_all_printers_info_level(TALLOC_CTX *mem_ctx,
+ 	struct dcerpc_binding_handle *b = NULL;
+ 
+ 	/*
+-	 * printer shares are only updated on client enumeration. The background
++	 * printer shares are updated on client enumeration. The background
+ 	 * printer process updates printer_list.tdb at regular intervals.
+ 	 */
+ 	become_root();
+-- 
+2.14.3
+
