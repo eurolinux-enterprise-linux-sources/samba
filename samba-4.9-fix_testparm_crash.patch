@@ -1,0 +1,2126 @@
+From 425bed0731a02b2e310b8835e9b75bff73582d99 Mon Sep 17 00:00:00 2001
+From: Ralph Boehme <slow@samba.org>
+Date: Mon, 9 Jul 2018 17:11:57 +0200
+Subject: [PATCH 01/22] s3:lib/server_contexts: make server_event_ctx and
+ server_msg_ctx static
+
+server_event_ctx and server_msg_ctx static shouldn't be accessible from
+outside this compilation unit.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Christof Schmitt <cs@samba.org>
+(cherry picked from commit d920a725ee19215190bbccaefd5b426bedc98860)
+---
+ source3/lib/server_contexts.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/source3/lib/server_contexts.c b/source3/lib/server_contexts.c
+index 50072e680b6..b21cf0a4c81 100644
+--- a/source3/lib/server_contexts.c
++++ b/source3/lib/server_contexts.c
+@@ -21,7 +21,7 @@
+ #include "includes.h"
+ #include "messages.h"
+ 
+-struct tevent_context *server_event_ctx = NULL;
++static struct tevent_context *server_event_ctx = NULL;
+ 
+ struct tevent_context *server_event_context(void)
+ {
+@@ -44,7 +44,7 @@ void server_event_context_free(void)
+ 	TALLOC_FREE(server_event_ctx);
+ }
+ 
+-struct messaging_context *server_msg_ctx = NULL;
++static struct messaging_context *server_msg_ctx = NULL;
+ 
+ struct messaging_context *server_messaging_context(void)
+ {
+-- 
+2.13.6
+
+
+From 1e8feaa20bfba475d6e2cbe69b5e1447586a7411 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 13 Aug 2018 15:07:20 -0700
+Subject: [PATCH 02/22] s3/lib:popt_common: Move setup_logging to common
+ callback
+
+The flag is set in the common callback, so be consistent
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit dff1028e8ba4c70e726283c12531853681034014)
+---
+ source3/lib/popt_common.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/source3/lib/popt_common.c b/source3/lib/popt_common.c
+index cc93a756c3b..454884fbb5c 100644
+--- a/source3/lib/popt_common.c
++++ b/source3/lib/popt_common.c
+@@ -93,6 +93,10 @@ static void popt_common_callback(poptContext con,
+ 			}
+ 		}
+ 
++		if (override_logfile) {
++			setup_logging(lp_logfile(talloc_tos()), DEBUG_FILE );
++		}
++
+ 		/* Further 'every Samba program must do this' hooks here. */
+ 		return;
+ 	}
+@@ -288,10 +292,6 @@ static void popt_common_credentials_callback(poptContext con,
+ 	if (reason == POPT_CALLBACK_REASON_POST) {
+ 		bool ok;
+ 
+-		if (override_logfile) {
+-			setup_logging(lp_logfile(talloc_tos()), DEBUG_FILE );
+-		}
+-
+ 		ok = lp_load_client(get_dyn_CONFIGFILE());
+ 		if (!ok) {
+ 			const char *pname = poptGetInvocationName(con);
+-- 
+2.13.6
+
+
+From a1954bee751b35c3888be7c3c36ce59bb857e3f3 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 13 Aug 2018 15:39:08 -0700
+Subject: [PATCH 03/22] s3:lib: Move popt_common_credentials to separate file
+
+This is only used by command line utilities and has additional
+dependencies. Move to a separate file to contain the dependencies to the
+command line tools.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit b7464fd89bc22b71c82bbaa424bcbfcf947db651)
+---
+ source3/client/client.c               |   2 +-
+ source3/include/popt_common.h         |  10 --
+ source3/include/popt_common_cmdline.h |  47 +++++++
+ source3/lib/popt_common.c             | 208 -----------------------------
+ source3/lib/popt_common_cmdline.c     | 241 ++++++++++++++++++++++++++++++++++
+ source3/rpcclient/cmd_spoolss.c       |   2 +-
+ source3/rpcclient/rpcclient.c         |   2 +-
+ source3/rpcclient/wscript_build       |   2 +-
+ source3/utils/net.c                   |   2 +-
+ source3/utils/regedit.c               |   2 +-
+ source3/utils/smbcacls.c              |   2 +-
+ source3/utils/smbcquotas.c            |   2 +-
+ source3/utils/smbget.c                |   2 +-
+ source3/utils/smbtree.c               |   2 +-
+ source3/utils/wscript_build           |  14 +-
+ source3/wscript_build                 |   9 +-
+ 16 files changed, 313 insertions(+), 236 deletions(-)
+ create mode 100644 source3/include/popt_common_cmdline.h
+ create mode 100644 source3/lib/popt_common_cmdline.c
+
+diff --git a/source3/client/client.c b/source3/client/client.c
+index 25ba01d6216..2f193459d5d 100644
+--- a/source3/client/client.c
++++ b/source3/client/client.c
+@@ -23,7 +23,7 @@
+ 
+ #include "includes.h"
+ #include "system/filesys.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ #include "rpc_client/cli_pipe.h"
+ #include "client/client_proto.h"
+ #include "client/clitar_proto.h"
+diff --git a/source3/include/popt_common.h b/source3/include/popt_common.h
+index a8c778473e9..e001a5369b7 100644
+--- a/source3/include/popt_common.h
++++ b/source3/include/popt_common.h
+@@ -21,7 +21,6 @@
+ #define _POPT_COMMON_H
+ 
+ #include <popt.h>
+-#include "auth_info.h"
+ 
+ /* Common popt structures */
+ extern struct poptOption popt_common_samba[];
+@@ -41,19 +40,10 @@ extern const struct poptOption popt_common_dynconfig[];
+ #define POPT_COMMON_CONNECTION { NULL, 0, POPT_ARG_INCLUDE_TABLE, popt_common_connection, 0, "Connection options:", NULL },
+ #define POPT_COMMON_VERSION { NULL, 0, POPT_ARG_INCLUDE_TABLE, popt_common_version, 0, "Common samba options:", NULL },
+ #define POPT_COMMON_CONFIGFILE { NULL, 0, POPT_ARG_INCLUDE_TABLE, popt_common_configfile, 0, "Common samba config:", NULL },
+-#define POPT_COMMON_CREDENTIALS { NULL, 0, POPT_ARG_INCLUDE_TABLE, popt_common_credentials, 0, "Authentication options:", NULL },
+ #define POPT_COMMON_DYNCONFIG { NULL, 0, POPT_ARG_INCLUDE_TABLE, \
+     discard_const_p(poptOption, popt_common_dynconfig), 0, \
+     "Build-time configuration overrides:", NULL },
+ #define POPT_COMMON_DEBUGLEVEL { NULL, 0, POPT_ARG_INCLUDE_TABLE, popt_common_debuglevel, 0, "Common samba debugging:", NULL },
+ #define POPT_COMMON_OPTION { NULL, 0, POPT_ARG_INCLUDE_TABLE, popt_common_option, 0, "Common samba commandline config:", NULL },
+ 
+-struct user_auth_info *popt_get_cmdline_auth_info(void);
+-void popt_free_cmdline_auth_info(void);
+-
+-void popt_common_credentials_set_ignore_missing_conf(void);
+-void popt_common_credentials_set_delay_post(void);
+-void popt_common_credentials_post(void);
+-void popt_burn_cmdline_password(int argc, char *argv[]);
+-
+ #endif /* _POPT_COMMON_H */
+diff --git a/source3/include/popt_common_cmdline.h b/source3/include/popt_common_cmdline.h
+new file mode 100644
+index 00000000000..21130cff071
+--- /dev/null
++++ b/source3/include/popt_common_cmdline.h
+@@ -0,0 +1,47 @@
++/*
++   Unix SMB/CIFS implementation.
++   Common popt arguments
++   Copyright (C) Jelmer Vernooij	2003
++   Copyright (C) Christof Schmitt	2018
++
++   This program is free software; you can redistribute it and/or modify
++   it under the terms of the GNU General Public License as published by
++   the Free Software Foundation; either version 3 of the License, or
++   (at your option) any later version.
++
++   This program is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++   GNU General Public License for more details.
++
++   You should have received a copy of the GNU General Public License
++   along with this program.  If not, see <http://www.gnu.org/licenses/>.
++*/
++
++
++#ifndef _POPT_COMMON_CREDENTIALS_H
++#define _POPT_COMMON_CREDENTIALS_H
++
++#include "popt_common.h"
++
++extern struct poptOption popt_common_credentials[];
++#define POPT_COMMON_CREDENTIALS \
++	{ \
++		NULL,						\
++		0,						\
++		POPT_ARG_INCLUDE_TABLE,			\
++		popt_common_credentials,			\
++		0,						\
++		"Authentication options:",			\
++		NULL						\
++	},
++
++struct user_auth_info *popt_get_cmdline_auth_info(void);
++void popt_free_cmdline_auth_info(void);
++
++void popt_common_credentials_set_ignore_missing_conf(void);
++void popt_common_credentials_set_delay_post(void);
++void popt_common_credentials_post(void);
++void popt_burn_cmdline_password(int argc, char *argv[]);
++
++#endif
+diff --git a/source3/lib/popt_common.c b/source3/lib/popt_common.c
+index 454884fbb5c..11db080c82d 100644
+--- a/source3/lib/popt_common.c
++++ b/source3/lib/popt_common.c
+@@ -213,211 +213,3 @@ struct poptOption popt_common_option[] = {
+ 	{ "option",         0, POPT_ARG_STRING, NULL, OPT_OPTION, "Set smb.conf option from command line", "name=value" },
+ 	POPT_TABLEEND
+ };
+-
+-/* Handle command line options:
+- *		-U,--user
+- *		-A,--authentication-file
+- *		-k,--use-kerberos
+- *		-N,--no-pass
+- *		-S,--signing
+- *              -P --machine-pass
+- * 		-e --encrypt
+- * 		-C --use-ccache
+- */
+-
+-static struct user_auth_info *cmdline_auth_info;
+-
+-struct user_auth_info *popt_get_cmdline_auth_info(void)
+-{
+-	return cmdline_auth_info;
+-}
+-void popt_free_cmdline_auth_info(void)
+-{
+-	TALLOC_FREE(cmdline_auth_info);
+-}
+-
+-static bool popt_common_credentials_ignore_missing_conf;
+-static bool popt_common_credentials_delay_post;
+-
+-void popt_common_credentials_set_ignore_missing_conf(void)
+-{
+-	popt_common_credentials_delay_post = true;
+-}
+-
+-void popt_common_credentials_set_delay_post(void)
+-{
+-	popt_common_credentials_delay_post = true;
+-}
+-
+-void popt_common_credentials_post(void)
+-{
+-	if (get_cmdline_auth_info_use_machine_account(cmdline_auth_info) &&
+-	    !set_cmdline_auth_info_machine_account_creds(cmdline_auth_info))
+-	{
+-		fprintf(stderr,
+-			"Failed to use machine account credentials\n");
+-		exit(1);
+-	}
+-
+-	set_cmdline_auth_info_getpass(cmdline_auth_info);
+-
+-	/*
+-	 * When we set the username during the handling of the options passed to
+-	 * the binary we haven't loaded the config yet. This means that we
+-	 * didnn't take the 'winbind separator' into account.
+-	 *
+-	 * The username might contain the domain name and thus it hasn't been
+-	 * correctly parsed yet. If we have a username we need to set it again
+-	 * to run the string parser for the username correctly.
+-	 */
+-	reset_cmdline_auth_info_username(cmdline_auth_info);
+-}
+-
+-static void popt_common_credentials_callback(poptContext con,
+-					enum poptCallbackReason reason,
+-					const struct poptOption *opt,
+-					const char *arg, const void *data)
+-{
+-	if (reason == POPT_CALLBACK_REASON_PRE) {
+-		struct user_auth_info *auth_info =
+-				user_auth_info_init(NULL);
+-		if (auth_info == NULL) {
+-			fprintf(stderr, "user_auth_info_init() failed\n");
+-			exit(1);
+-		}
+-		cmdline_auth_info = auth_info;
+-		return;
+-	}
+-
+-	if (reason == POPT_CALLBACK_REASON_POST) {
+-		bool ok;
+-
+-		ok = lp_load_client(get_dyn_CONFIGFILE());
+-		if (!ok) {
+-			const char *pname = poptGetInvocationName(con);
+-
+-			fprintf(stderr, "%s: Can't load %s - run testparm to debug it\n",
+-				pname, get_dyn_CONFIGFILE());
+-			if (!popt_common_credentials_ignore_missing_conf) {
+-				exit(1);
+-			}
+-		}
+-
+-		load_interfaces();
+-
+-		set_cmdline_auth_info_guess(cmdline_auth_info);
+-
+-		if (popt_common_credentials_delay_post) {
+-			return;
+-		}
+-
+-		popt_common_credentials_post();
+-		return;
+-	}
+-
+-	switch(opt->val) {
+-	case 'U':
+-		set_cmdline_auth_info_username(cmdline_auth_info, arg);
+-		break;
+-
+-	case 'A':
+-		set_cmdline_auth_info_from_file(cmdline_auth_info, arg);
+-		break;
+-
+-	case 'k':
+-#ifndef HAVE_KRB5
+-		d_printf("No kerberos support compiled in\n");
+-		exit(1);
+-#else
+-		set_cmdline_auth_info_use_krb5_ticket(cmdline_auth_info);
+-#endif
+-		break;
+-
+-	case 'S':
+-		if (!set_cmdline_auth_info_signing_state(cmdline_auth_info,
+-				arg)) {
+-			fprintf(stderr, "Unknown signing option %s\n", arg );
+-			exit(1);
+-		}
+-		break;
+-	case 'P':
+-		set_cmdline_auth_info_use_machine_account(cmdline_auth_info);
+-		break;
+-	case 'N':
+-		set_cmdline_auth_info_password(cmdline_auth_info, "");
+-		break;
+-	case 'e':
+-		set_cmdline_auth_info_smb_encrypt(cmdline_auth_info);
+-		break;
+-	case 'C':
+-		set_cmdline_auth_info_use_ccache(cmdline_auth_info, true);
+-		break;
+-	case 'H':
+-		set_cmdline_auth_info_use_pw_nt_hash(cmdline_auth_info, true);
+-		break;
+-	}
+-}
+-
+-/**
+- * @brief Burn the commandline password.
+- *
+- * This function removes the password from the command line so we
+- * don't leak the password e.g. in 'ps aux'.
+- *
+- * It should be called after processing the options and you should pass down
+- * argv from main().
+- *
+- * @param[in]  argc     The number of arguments.
+- *
+- * @param[in]  argv[]   The argument array we will find the array.
+- */
+-void popt_burn_cmdline_password(int argc, char *argv[])
+-{
+-	bool found = false;
+-	char *p = NULL;
+-	int i, ulen = 0;
+-
+-	for (i = 0; i < argc; i++) {
+-		p = argv[i];
+-		if (strncmp(p, "-U", 2) == 0) {
+-			ulen = 2;
+-			found = true;
+-		} else if (strncmp(p, "--user", 6) == 0) {
+-			ulen = 6;
+-			found = true;
+-		}
+-
+-		if (found) {
+-			if (p == NULL) {
+-				return;
+-			}
+-
+-			if (strlen(p) == ulen) {
+-				continue;
+-			}
+-
+-			p = strchr_m(p, '%');
+-			if (p != NULL) {
+-				memset(p, '\0', strlen(p));
+-			}
+-			found = false;
+-		}
+-	}
+-}
+-
+-struct poptOption popt_common_credentials[] = {
+-	{ NULL, 0, POPT_ARG_CALLBACK|POPT_CBFLAG_PRE|POPT_CBFLAG_POST,
+-	  (void *)popt_common_credentials_callback, 0, NULL },
+-	{ "user", 'U', POPT_ARG_STRING, NULL, 'U', "Set the network username", "USERNAME" },
+-	{ "no-pass", 'N', POPT_ARG_NONE, NULL, 'N', "Don't ask for a password" },
+-	{ "kerberos", 'k', POPT_ARG_NONE, NULL, 'k', "Use kerberos (active directory) authentication" },
+-	{ "authentication-file", 'A', POPT_ARG_STRING, NULL, 'A', "Get the credentials from a file", "FILE" },
+-	{ "signing", 'S', POPT_ARG_STRING, NULL, 'S', "Set the client signing state", "on|off|required" },
+-	{"machine-pass", 'P', POPT_ARG_NONE, NULL, 'P', "Use stored machine account password" },
+-	{"encrypt", 'e', POPT_ARG_NONE, NULL, 'e', "Encrypt SMB transport" },
+-	{"use-ccache", 'C', POPT_ARG_NONE, NULL, 'C',
+-	 "Use the winbind ccache for authentication" },
+-	{"pw-nt-hash", '\0', POPT_ARG_NONE, NULL, 'H',
+-	 "The supplied password is the NT hash" },
+-	POPT_TABLEEND
+-};
+diff --git a/source3/lib/popt_common_cmdline.c b/source3/lib/popt_common_cmdline.c
+new file mode 100644
+index 00000000000..57f77e0868a
+--- /dev/null
++++ b/source3/lib/popt_common_cmdline.c
+@@ -0,0 +1,241 @@
++/*
++   Unix SMB/CIFS implementation.
++   Common popt routines only used by cmdline utils
++
++   Copyright (C) Tim Potter 2001,2002
++   Copyright (C) Jelmer Vernooij 2002,2003
++   Copyright (C) James Peach 2006
++   Copyright (C) Christof Schmitt 2018
++
++   This program is free software; you can redistribute it and/or modify
++   it under the terms of the GNU General Public License as published by
++   the Free Software Foundation; either version 3 of the License, or
++   (at your option) any later version.
++
++   This program is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++   GNU General Public License for more details.
++
++   You should have received a copy of the GNU General Public License
++   along with this program.  If not, see <http://www.gnu.org/licenses/>.
++*/
++
++/* Handle command line options:
++ *		-U,--user
++ *		-A,--authentication-file
++ *		-k,--use-kerberos
++ *		-N,--no-pass
++ *		-S,--signing
++ *		-P --machine-pass
++ *		-e --encrypt
++ *		-C --use-ccache
++ */
++
++#include "popt_common_cmdline.h"
++#include "includes.h"
++#include "auth_info.h"
++
++static struct user_auth_info *cmdline_auth_info;
++
++struct user_auth_info *popt_get_cmdline_auth_info(void)
++{
++	return cmdline_auth_info;
++}
++void popt_free_cmdline_auth_info(void)
++{
++	TALLOC_FREE(cmdline_auth_info);
++}
++
++static bool popt_common_credentials_ignore_missing_conf;
++static bool popt_common_credentials_delay_post;
++
++void popt_common_credentials_set_ignore_missing_conf(void)
++{
++	popt_common_credentials_delay_post = true;
++}
++
++void popt_common_credentials_set_delay_post(void)
++{
++	popt_common_credentials_delay_post = true;
++}
++
++void popt_common_credentials_post(void)
++{
++	if (get_cmdline_auth_info_use_machine_account(cmdline_auth_info) &&
++	    !set_cmdline_auth_info_machine_account_creds(cmdline_auth_info))
++	{
++		fprintf(stderr,
++			"Failed to use machine account credentials\n");
++		exit(1);
++	}
++
++	set_cmdline_auth_info_getpass(cmdline_auth_info);
++
++	/*
++	 * When we set the username during the handling of the options passed to
++	 * the binary we haven't loaded the config yet. This means that we
++	 * didn't take the 'winbind separator' into account.
++	 *
++	 * The username might contain the domain name and thus it hasn't been
++	 * correctly parsed yet. If we have a username we need to set it again
++	 * to run the string parser for the username correctly.
++	 */
++	reset_cmdline_auth_info_username(cmdline_auth_info);
++}
++
++static void popt_common_credentials_callback(poptContext con,
++					enum poptCallbackReason reason,
++					const struct poptOption *opt,
++					const char *arg, const void *data)
++{
++	if (reason == POPT_CALLBACK_REASON_PRE) {
++		struct user_auth_info *auth_info =
++				user_auth_info_init(NULL);
++		if (auth_info == NULL) {
++			fprintf(stderr, "user_auth_info_init() failed\n");
++			exit(1);
++		}
++		cmdline_auth_info = auth_info;
++		return;
++	}
++
++	if (reason == POPT_CALLBACK_REASON_POST) {
++		bool ok;
++
++		ok = lp_load_client(get_dyn_CONFIGFILE());
++		if (!ok) {
++			const char *pname = poptGetInvocationName(con);
++
++			fprintf(stderr, "%s: Can't load %s - run testparm to debug it\n",
++				pname, get_dyn_CONFIGFILE());
++			if (!popt_common_credentials_ignore_missing_conf) {
++				exit(1);
++			}
++		}
++
++		load_interfaces();
++
++		set_cmdline_auth_info_guess(cmdline_auth_info);
++
++		if (popt_common_credentials_delay_post) {
++			return;
++		}
++
++		popt_common_credentials_post();
++		return;
++	}
++
++	switch(opt->val) {
++	case 'U':
++		set_cmdline_auth_info_username(cmdline_auth_info, arg);
++		break;
++
++	case 'A':
++		set_cmdline_auth_info_from_file(cmdline_auth_info, arg);
++		break;
++
++	case 'k':
++#ifndef HAVE_KRB5
++		d_printf("No kerberos support compiled in\n");
++		exit(1);
++#else
++		set_cmdline_auth_info_use_krb5_ticket(cmdline_auth_info);
++#endif
++		break;
++
++	case 'S':
++		if (!set_cmdline_auth_info_signing_state(cmdline_auth_info,
++				arg)) {
++			fprintf(stderr, "Unknown signing option %s\n", arg );
++			exit(1);
++		}
++		break;
++	case 'P':
++		set_cmdline_auth_info_use_machine_account(cmdline_auth_info);
++		break;
++	case 'N':
++		set_cmdline_auth_info_password(cmdline_auth_info, "");
++		break;
++	case 'e':
++		set_cmdline_auth_info_smb_encrypt(cmdline_auth_info);
++		break;
++	case 'C':
++		set_cmdline_auth_info_use_ccache(cmdline_auth_info, true);
++		break;
++	case 'H':
++		set_cmdline_auth_info_use_pw_nt_hash(cmdline_auth_info, true);
++		break;
++	}
++}
++
++/**
++ * @brief Burn the commandline password.
++ *
++ * This function removes the password from the command line so we
++ * don't leak the password e.g. in 'ps aux'.
++ *
++ * It should be called after processing the options and you should pass down
++ * argv from main().
++ *
++ * @param[in]  argc     The number of arguments.
++ *
++ * @param[in]  argv[]   The argument array we will find the array.
++ */
++void popt_burn_cmdline_password(int argc, char *argv[])
++{
++	bool found = false;
++	char *p = NULL;
++	int i, ulen = 0;
++
++	for (i = 0; i < argc; i++) {
++		p = argv[i];
++		if (strncmp(p, "-U", 2) == 0) {
++			ulen = 2;
++			found = true;
++		} else if (strncmp(p, "--user", 6) == 0) {
++			ulen = 6;
++			found = true;
++		}
++
++		if (found) {
++			if (p == NULL) {
++				return;
++			}
++
++			if (strlen(p) == ulen) {
++				continue;
++			}
++
++			p = strchr_m(p, '%');
++			if (p != NULL) {
++				memset(p, '\0', strlen(p));
++			}
++			found = false;
++		}
++	}
++}
++
++struct poptOption popt_common_credentials[] = {
++	{ NULL, 0, POPT_ARG_CALLBACK|POPT_CBFLAG_PRE|POPT_CBFLAG_POST,
++	  (void *)popt_common_credentials_callback, 0, NULL },
++	{ "user", 'U', POPT_ARG_STRING, NULL, 'U',
++	  "Set the network username", "USERNAME" },
++	{ "no-pass", 'N', POPT_ARG_NONE, NULL, 'N',
++	  "Don't ask for a password" },
++	{ "kerberos", 'k', POPT_ARG_NONE, NULL, 'k',
++	  "Use kerberos (active directory) authentication" },
++	{ "authentication-file", 'A', POPT_ARG_STRING, NULL, 'A',
++	  "Get the credentials from a file", "FILE" },
++	{ "signing", 'S', POPT_ARG_STRING, NULL, 'S',
++	  "Set the client signing state", "on|off|required" },
++	{"machine-pass", 'P', POPT_ARG_NONE, NULL, 'P',
++	 "Use stored machine account password" },
++	{"encrypt", 'e', POPT_ARG_NONE, NULL, 'e',
++	 "Encrypt SMB transport" },
++	{"use-ccache", 'C', POPT_ARG_NONE, NULL, 'C',
++	 "Use the winbind ccache for authentication" },
++	{"pw-nt-hash", '\0', POPT_ARG_NONE, NULL, 'H',
++	 "The supplied password is the NT hash" },
++	POPT_TABLEEND
++};
+diff --git a/source3/rpcclient/cmd_spoolss.c b/source3/rpcclient/cmd_spoolss.c
+index 1d24476e9a5..8d330afdeb0 100644
+--- a/source3/rpcclient/cmd_spoolss.c
++++ b/source3/rpcclient/cmd_spoolss.c
+@@ -33,7 +33,7 @@
+ #include "../libcli/security/security_descriptor.h"
+ #include "../libcli/registry/util_reg.h"
+ #include "libsmb/libsmb.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ 
+ #define RPCCLIENT_PRINTERNAME(_printername, _cli, _arg) \
+ { \
+diff --git a/source3/rpcclient/rpcclient.c b/source3/rpcclient/rpcclient.c
+index b4e25e6e479..f7e196226cf 100644
+--- a/source3/rpcclient/rpcclient.c
++++ b/source3/rpcclient/rpcclient.c
+@@ -21,7 +21,7 @@
+ 
+ #include "includes.h"
+ #include "../libcli/auth/netlogon_creds_cli.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ #include "rpcclient.h"
+ #include "../libcli/auth/libcli_auth.h"
+ #include "../librpc/gen_ndr/ndr_lsa_c.h"
+diff --git a/source3/rpcclient/wscript_build b/source3/rpcclient/wscript_build
+index c24a5670db9..11a64f3248a 100644
+--- a/source3/rpcclient/wscript_build
++++ b/source3/rpcclient/wscript_build
+@@ -25,7 +25,7 @@ bld.SAMBA3_BINARY('rpcclient',
+ 		 ''',
+                  deps='''
+                  talloc
+-                 popt_samba3
++                 popt_samba3_cmdline
+                  pdb
+                  libsmb
+                  smbconf
+diff --git a/source3/utils/net.c b/source3/utils/net.c
+index 44daa6088ca..76b8677bf78 100644
+--- a/source3/utils/net.c
++++ b/source3/utils/net.c
+@@ -41,7 +41,7 @@
+ /*****************************************************/
+ 
+ #include "includes.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ #include "utils/net.h"
+ #include "secrets.h"
+ #include "lib/netapi/netapi.h"
+diff --git a/source3/utils/regedit.c b/source3/utils/regedit.c
+index 27bd6f8f2c2..20115ae1624 100644
+--- a/source3/utils/regedit.c
++++ b/source3/utils/regedit.c
+@@ -18,7 +18,7 @@
+  */
+ 
+ #include "includes.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ #include "lib/util/data_blob.h"
+ #include "lib/registry/registry.h"
+ #include "regedit.h"
+diff --git a/source3/utils/smbcacls.c b/source3/utils/smbcacls.c
+index 0a5eeb31d0b..33eb78c41ec 100644
+--- a/source3/utils/smbcacls.c
++++ b/source3/utils/smbcacls.c
+@@ -22,7 +22,7 @@
+ */
+ 
+ #include "includes.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ #include "rpc_client/cli_pipe.h"
+ #include "../librpc/gen_ndr/ndr_lsa.h"
+ #include "rpc_client/cli_lsarpc.h"
+diff --git a/source3/utils/smbcquotas.c b/source3/utils/smbcquotas.c
+index 798b8b6f177..a4b1b8111a5 100644
+--- a/source3/utils/smbcquotas.c
++++ b/source3/utils/smbcquotas.c
+@@ -22,7 +22,7 @@
+ */
+ 
+ #include "includes.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ #include "rpc_client/cli_pipe.h"
+ #include "../librpc/gen_ndr/ndr_lsa.h"
+ #include "rpc_client/cli_lsarpc.h"
+diff --git a/source3/utils/smbget.c b/source3/utils/smbget.c
+index e1be42917fb..37462fa131f 100644
+--- a/source3/utils/smbget.c
++++ b/source3/utils/smbget.c
+@@ -18,7 +18,7 @@
+ 
+ #include "includes.h"
+ #include "system/filesys.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ #include "libsmbclient.h"
+ 
+ static int columns = 0;
+diff --git a/source3/utils/smbtree.c b/source3/utils/smbtree.c
+index 3b539ef1045..fb0f165a18d 100644
+--- a/source3/utils/smbtree.c
++++ b/source3/utils/smbtree.c
+@@ -20,7 +20,7 @@
+ */
+ 
+ #include "includes.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ #include "rpc_client/cli_pipe.h"
+ #include "../librpc/gen_ndr/ndr_srvsvc_c.h"
+ #include "libsmb/libsmb.h"
+diff --git a/source3/utils/wscript_build b/source3/utils/wscript_build
+index 93e6abaac0d..67bb87e7a74 100644
+--- a/source3/utils/wscript_build
++++ b/source3/utils/wscript_build
+@@ -27,7 +27,7 @@ bld.SAMBA3_BINARY('smbtree',
+                  smbconf
+                  libsmb
+                  msrpc3
+-                 popt_samba3
++                 popt_samba3_cmdline
+                  RPC_NDR_SRVSVC''')
+ 
+ bld.SAMBA3_BINARY('smbpasswd',
+@@ -52,7 +52,7 @@ bld.SAMBA3_BINARY('smbget',
+                  source='smbget.c',
+                  deps='''
+                  talloc
+-                 popt_samba3
++                 popt_samba3_cmdline
+                  smbclient''')
+ 
+ bld.SAMBA3_BINARY('nmblookup',
+@@ -67,7 +67,7 @@ bld.SAMBA3_BINARY('smbcacls',
+                  source='smbcacls.c ../lib/util_sd.c',
+                  deps='''
+                  talloc
+-                 popt_samba3
++                 popt_samba3_cmdline
+                  msrpc3
+                  libcli_lsa3
+                  krb5samba''')
+@@ -76,7 +76,7 @@ bld.SAMBA3_BINARY('smbcquotas',
+                  source='smbcquotas.c',
+                  deps='''
+                  talloc
+-                 popt_samba3
++                 popt_samba3_cmdline
+                  libsmb
+                  msrpc3
+                  libcli_lsa3''')
+@@ -150,7 +150,9 @@ bld.SAMBA3_BINARY('samba-regedit',
+                             regedit_wrap.c regedit_treeview.c
+                             regedit_valuelist.c regedit_dialog.c
+                             regedit_hexedit.c regedit_list.c""",
+-                  deps='ncurses menu panel form registry smbconf popt_samba3',
++                  deps='''
++                  ncurses menu panel form registry smbconf popt_samba3_cmdline
++                  ''',
+                   enabled=bld.env.build_regedit)
+ 
+ bld.SAMBA3_BINARY('testparm',
+@@ -217,7 +219,7 @@ bld.SAMBA3_BINARY('net',
+                  netapi
+                  addns
+                  samba_intl
+-                 popt_samba3
++                 popt_samba3_cmdline
+                  pdb
+                  libsmb
+                  smbconf
+diff --git a/source3/wscript_build b/source3/wscript_build
+index c7c69a9bee1..5ecf23d531d 100644
+--- a/source3/wscript_build
++++ b/source3/wscript_build
+@@ -268,7 +268,12 @@ bld.SAMBA3_SUBSYSTEM('REG_FULL',
+ 
+ bld.SAMBA3_LIBRARY('popt_samba3',
+                    source='lib/popt_common.c',
+-                   deps='popt samba-util util_cmdline',
++                   deps='popt samba-util smbconf',
++                   private_library=True)
++
++bld.SAMBA3_LIBRARY('popt_samba3_cmdline',
++                   source='lib/popt_common_cmdline.c',
++                   deps='popt_samba3 util_cmdline',
+                    private_library=True)
+ 
+ bld.SAMBA3_LIBRARY('util_cmdline',
+@@ -1094,7 +1099,7 @@ bld.SAMBA3_BINARY('client/smbclient',
+                         ''',
+                  deps='''
+                       talloc
+-                      popt_samba3
++                      popt_samba3_cmdline
+                       smbconf
+                       ndr-standard
+                       SMBREADLINE
+-- 
+2.13.6
+
+
+From a98b2df2121c129326c64e35ba63e780aeb44a19 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 14:44:28 -0700
+Subject: [PATCH 04/22] s3:lib: Introduce cmdline context wrapper
+
+Command line tools need acccess to the same messaging context provided
+by server_messaging_context, as common code for db_open uses that
+context. We want to have additional checking for command line tools
+without having that code part of the servers. Introduce a wrapper
+library to use for command line tools with the additional checks, that
+then acquires the server_messaging_context.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 8c3b62e6231e62feafacf2a7ee4c9d41cd27a4a1)
+---
+ source3/lib/cmdline_contexts.c | 70 ++++++++++++++++++++++++++++++++++++++++++
+ source3/lib/cmdline_contexts.h | 27 ++++++++++++++++
+ source3/wscript_build          |  5 +++
+ 3 files changed, 102 insertions(+)
+ create mode 100644 source3/lib/cmdline_contexts.c
+ create mode 100644 source3/lib/cmdline_contexts.h
+
+diff --git a/source3/lib/cmdline_contexts.c b/source3/lib/cmdline_contexts.c
+new file mode 100644
+index 00000000000..5713f7f7956
+--- /dev/null
++++ b/source3/lib/cmdline_contexts.c
+@@ -0,0 +1,70 @@
++/*
++   Unix SMB/CIFS implementation.
++   cmdline context wrapper.
++
++   Copyright (C) Christof Schmitt <cs@samba.org> 2018
++
++   This program is free software; you can redistribute it and/or modify
++   it under the terms of the GNU General Public License as published by
++   the Free Software Foundation; either version 3 of the License, or
++   (at your option) any later version.
++
++   This program is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++   GNU General Public License for more details.
++
++   You should have received a copy of the GNU General Public License
++   along with this program.  If not, see <http://www.gnu.org/licenses/>.
++*/
++
++#include "cmdline_contexts.h"
++#include "includes.h"
++#include "messages.h"
++
++struct messaging_context *cmdline_messaging_context(const char *config_file)
++{
++	struct messaging_context *msg_ctx = NULL;
++
++	/*
++	 * Ensure that a config is loaded, in case the underlying
++	 * messaging_init needs to create directories or sockets.
++	 */
++	if (!lp_loaded()) {
++		if (!lp_load_initial_only(config_file)) {
++			return NULL;
++		}
++	}
++
++	/*
++	 * Clustered Samba can only work as root due to required
++	 * access to the registry and ctdb, which in turn requires
++	 * messaging access as root.
++	 */
++	if (lp_clustering() && geteuid() != 0) {
++		fprintf(stderr, "Cluster mode requires running as root.\n");
++		exit(1);
++	}
++
++	msg_ctx = server_messaging_context();
++	if (msg_ctx == NULL) {
++		if (geteuid() == 0) {
++			fprintf(stderr,
++				"Unable to initialize messaging context!\n");
++			exit(1);
++		} else {
++			/*
++			 * Non-cluster, non-root: Log error, but leave
++			 * it up to the caller how to proceed.
++			 */
++			DBG_NOTICE("Unable to initialize messaging context.\n");
++		}
++	}
++
++	return msg_ctx;
++}
++
++void cmdline_messaging_context_free(void)
++{
++	server_messaging_context_free();
++}
+diff --git a/source3/lib/cmdline_contexts.h b/source3/lib/cmdline_contexts.h
+new file mode 100644
+index 00000000000..21f81f0f1cd
+--- /dev/null
++++ b/source3/lib/cmdline_contexts.h
+@@ -0,0 +1,27 @@
++/*
++   Unix SMB/CIFS implementation.
++   cmdline context wrapper.
++
++   Copyright (C) Christof Schmitt <cs@samba.org> 2018
++
++   This program is free software; you can redistribute it and/or modify
++   it under the terms of the GNU General Public License as published by
++   the Free Software Foundation; either version 3 of the License, or
++   (at your option) any later version.
++
++   This program is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++   GNU General Public License for more details.
++
++   You should have received a copy of the GNU General Public License
++   along with this program.  If not, see <http://www.gnu.org/licenses/>.
++*/
++
++#ifndef _LIB_CMDLINE_CONTEXTS_H
++#define _LIB_CMDLINE_CONTEXTS_H
++
++struct messaging_context *cmdline_messaging_context(const char *config_file);
++void cmdline_messaging_context_free(void);
++
++#endif
+diff --git a/source3/wscript_build b/source3/wscript_build
+index 5ecf23d531d..6fb09f7fbeb 100644
+--- a/source3/wscript_build
++++ b/source3/wscript_build
+@@ -281,6 +281,11 @@ bld.SAMBA3_LIBRARY('util_cmdline',
+                    deps='secrets3',
+                    private_library=True)
+ 
++bld.SAMBA3_LIBRARY('cmdline_contexts',
++                   source='lib/cmdline_contexts.c',
++                   deps='samba3core',
++                   private_library=True)
++
+ bld.SAMBA3_SUBSYSTEM('KRBCLIENT',
+                      source='libads/kerberos.c libads/ads_status.c',
+                      public_deps='krb5samba asn1util k5crypto gssapi LIBTSOCKET CLDAP LIBNMB')
+-- 
+2.13.6
+
+
+From d5d7a587f7476835bc48aae0dda5e064c2fd573c Mon Sep 17 00:00:00 2001
+From: Ralph Boehme <slow@samba.org>
+Date: Tue, 10 Jul 2018 08:11:31 +0200
+Subject: [PATCH 05/22] s3:loadparm: reinit_globals in
+ lp_load_with_registry_shares()
+
+This was set to false in 0e0d77519c27038b30fec92d542198e97be767d9 based
+on the assumption that callers would have no need to call
+lp_load_initial_only() with a later call to lp_load_something().
+
+This is not quite correct, since for accessing registry config on a
+cluster with include=registry, we need messaging up and running which
+*itself* requires loadparm to be initialized to get the statedir,
+lockdir asf. directories.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Christof Schmitt <cs@samba.org>
+(cherry picked from commit 3aca3f24d4bdacc11278388934b0b411d518d7b0)
+---
+ source3/param/loadparm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/param/loadparm.c b/source3/param/loadparm.c
+index 291ba57e0bb..322934c55f0 100644
+--- a/source3/param/loadparm.c
++++ b/source3/param/loadparm.c
+@@ -4120,7 +4120,7 @@ bool lp_load_with_registry_shares(const char *pszFname)
+ 			  false, /* global_only */
+ 			  true,  /* save_defaults */
+ 			  false, /* add_ipc */
+-			  false, /* reinit_globals */
++			  true, /* reinit_globals */
+ 			  true,  /* allow_include_registry */
+ 			  true); /* load_all_shares*/
+ }
+-- 
+2.13.6
+
+
+From 88291681f03bb928d31e89717d2a19292f433024 Mon Sep 17 00:00:00 2001
+From: Ralph Boehme <slow@samba.org>
+Date: Tue, 10 Jul 2018 10:38:10 +0200
+Subject: [PATCH 06/22] selftest: pass configfile to pdbedit
+
+This is needed otherwise pdbedit fails to initialize messaging in
+autobuild.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Christof Schmitt <cs@samba.org>
+(cherry picked from commit 10e1a6ebb3d95b8a1584a9b90c2584536aa9c96d)
+---
+ testprogs/blackbox/test_pdbtest.sh | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/testprogs/blackbox/test_pdbtest.sh b/testprogs/blackbox/test_pdbtest.sh
+index 2ffded9af4e..02615094451 100755
+--- a/testprogs/blackbox/test_pdbtest.sh
++++ b/testprogs/blackbox/test_pdbtest.sh
+@@ -44,12 +44,12 @@ send ${NEWUSERPASS}\n
+ send ${NEWUSERPASS}\n
+ EOF
+ 
+-testit "create user with pdbedit" $texpect ./tmpsmbpasswdscript $VALGRIND $pdbedit -a $USER --account-desc="pdbedit-test-user" $@ || failed=`expr $failed + 1`
++testit "create user with pdbedit" $texpect ./tmpsmbpasswdscript $VALGRIND $pdbedit -s $SMB_CONF -a $USER --account-desc="pdbedit-test-user" $@ || failed=`expr $failed + 1`
+ USERPASS=$NEWUSERPASS
+ 
+ test_smbclient "Test login with user (ntlm)" 'ls' "$unc" -k no -U$USER%$NEWUSERPASS $@ || failed=`expr $failed + 1`
+ 
+-testit "modify user"  $VALGRIND $pdbedit --modify $USER --drive="D:" $@ || failed=`expr $failed + 1`
++testit "modify user"  $VALGRIND $pdbedit -s $SMB_CONF --modify $USER --drive="D:" $@ || failed=`expr $failed + 1`
+ 
+ test_smbclient "Test login with user (ntlm)" 'ls' "$unc" -k no -U$USER%$NEWUSERPASS $@|| failed=`expr $failed + 1`
+ 
+@@ -87,11 +87,11 @@ test_smbclient "Test login with no expiry (ntlm)" 'ls' "$unc" -k no -U$USER%$NEW
+ NEWUSERPASS=testPaSS@03%
+ NEWUSERHASH=062519096c45739c1938800f80906731
+ 
+-testit "Set user password with password hash" $VALGRIND $pdbedit -u $USER --set-nt-hash $NEWUSERHASH $@ || failed=`expr $failed + 1`
++testit "Set user password with password hash" $VALGRIND $pdbedit -s $SMB_CONF -u $USER --set-nt-hash $NEWUSERHASH $@ || failed=`expr $failed + 1`
+ 
+ test_smbclient "Test login with new password (from hash)" 'ls' "$unc" -k no -U$USER%$NEWUSERPASS || failed=`expr $failed + 1`
+ 
+-testit "del user"  $VALGRIND $pdbedit -x $USER $@ || failed=`expr $failed + 1`
++testit "del user"  $VALGRIND $pdbedit -s $SMB_CONF -x $USER $@ || failed=`expr $failed + 1`
+ 
+ rm ./tmpsmbpasswdscript
+ 
+-- 
+2.13.6
+
+
+From 31a50b15bfbe2c97ca19313e2536332979bfcef2 Mon Sep 17 00:00:00 2001
+From: Ralph Boehme <slow@samba.org>
+Date: Tue, 10 Jul 2018 15:26:40 +0200
+Subject: [PATCH 07/22] s3:popt_common: use cmdline_messaging_context() in
+ popt_common_credentials_callback()
+
+This adds a call to cmdline_messaging_context() to the popt
+popt_common_credentials_callback() hook and ensures that any client tool
+that uses POPT_COMMON_CREDENTIALS gets an implicit messaging context,
+ensuring it doesn't crash in the subsequent lp_load_client() with
+include=registry in a cluster.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Christof Schmitt <cs@samba.org>
+(cherry picked from commit 2c63ce94ef3a55ab0aa1aae4f6fee88e29ac2efe)
+---
+ source3/lib/popt_common_cmdline.c | 8 ++++++++
+ source3/wscript_build             | 2 +-
+ 2 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/source3/lib/popt_common_cmdline.c b/source3/lib/popt_common_cmdline.c
+index 57f77e0868a..d1ba90dd43e 100644
+--- a/source3/lib/popt_common_cmdline.c
++++ b/source3/lib/popt_common_cmdline.c
+@@ -35,6 +35,7 @@
+ #include "popt_common_cmdline.h"
+ #include "includes.h"
+ #include "auth_info.h"
++#include "cmdline_contexts.h"
+ 
+ static struct user_auth_info *cmdline_auth_info;
+ 
+@@ -101,8 +102,15 @@ static void popt_common_credentials_callback(poptContext con,
+ 	}
+ 
+ 	if (reason == POPT_CALLBACK_REASON_POST) {
++		struct messaging_context *msg_ctx = NULL;
+ 		bool ok;
+ 
++		msg_ctx = cmdline_messaging_context(get_dyn_CONFIGFILE());
++		if (msg_ctx == NULL) {
++			fprintf(stderr, "Unable to initialize "
++				"messaging context\n");
++		}
++
+ 		ok = lp_load_client(get_dyn_CONFIGFILE());
+ 		if (!ok) {
+ 			const char *pname = poptGetInvocationName(con);
+diff --git a/source3/wscript_build b/source3/wscript_build
+index 6fb09f7fbeb..250b7f1ff52 100644
+--- a/source3/wscript_build
++++ b/source3/wscript_build
+@@ -273,7 +273,7 @@ bld.SAMBA3_LIBRARY('popt_samba3',
+ 
+ bld.SAMBA3_LIBRARY('popt_samba3_cmdline',
+                    source='lib/popt_common_cmdline.c',
+-                   deps='popt_samba3 util_cmdline',
++                   deps='popt_samba3 util_cmdline cmdline_contexts',
+                    private_library=True)
+ 
+ bld.SAMBA3_LIBRARY('util_cmdline',
+-- 
+2.13.6
+
+
+From db6cce7786809a96f81c575a3cbbbf87bdec3047 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Tue, 21 Aug 2018 14:58:01 -0700
+Subject: [PATCH 08/22] test:doc: Skip 'clustering=yes'
+
+As testparm will error out when running clustering=yes as non-root, skip
+this step to avoid a test failure.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(backported from commit 3ecb9ed7b079fc1bf74c311cf5f1684086b36883)
+---
+ python/samba/tests/docs.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/python/samba/tests/docs.py b/python/samba/tests/docs.py
+index 0f029ae02d2..620383caebd 100644
+--- a/python/samba/tests/docs.py
++++ b/python/samba/tests/docs.py
+@@ -163,7 +163,8 @@ import xml.etree.ElementTree as ET
+                           'registry shares',
+                           'smb ports',
+                           'rpc server dynamic port range',
+-                          'name resolve order'])
++                          'name resolve order',
++                          'clustering'])
+         self._test_empty(['bin/testparm'])
+ 
+     def test_default_s4(self):
+-- 
+2.13.6
+
+
+From 7608714a4a0796c8ef747c0cbce160fc3d0fa325 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 15:38:33 -0700
+Subject: [PATCH 09/22] s3:smbpasswd: Use cmdline_messaging_context
+
+smbpasswd does not use POPT_CREDENTIALS. Call cmdline_messaging_context
+to initialize a messaging_context with proper error checking before
+calling lp_load_global.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 29fd2c2e5ad3c2d44f3629c6b7b4139772fe350c)
+---
+ source3/utils/smbpasswd.c   | 17 +++--------------
+ source3/utils/wscript_build |  4 +++-
+ 2 files changed, 6 insertions(+), 15 deletions(-)
+
+diff --git a/source3/utils/smbpasswd.c b/source3/utils/smbpasswd.c
+index 04f34aa9b69..8e2b9d7f80f 100644
+--- a/source3/utils/smbpasswd.c
++++ b/source3/utils/smbpasswd.c
+@@ -23,6 +23,7 @@
+ #include "../lib/util/util_pw.h"
+ #include "libsmb/proto.h"
+ #include "passdb.h"
++#include "cmdline_contexts.h"
+ 
+ /*
+  * Next two lines needed for SunOS and don't
+@@ -196,6 +197,8 @@ static int process_options(int argc, char **argv, int local_flags)
+ 		usage();
+ 	}
+ 
++	cmdline_messaging_context(configfile);
++
+ 	if (!lp_load_global(configfile)) {
+ 		fprintf(stderr, "Can't load %s - run testparm to debug it\n", 
+ 			configfile);
+@@ -614,7 +617,6 @@ static int process_nonroot(int local_flags)
+ int main(int argc, char **argv)
+ {	
+ 	TALLOC_CTX *frame = talloc_stackframe();
+-	struct messaging_context *msg_ctx = NULL;
+ 	int local_flags = 0;
+ 	int ret;
+ 
+@@ -632,19 +634,6 @@ int main(int argc, char **argv)
+ 
+ 	setup_logging("smbpasswd", DEBUG_STDERR);
+ 
+-	msg_ctx = server_messaging_context();
+-	if (msg_ctx == NULL) {
+-		if (geteuid() != 0) {
+-			DBG_NOTICE("Unable to initialize messaging context. "
+-				   "Must be root to do that.\n");
+-		} else {
+-			fprintf(stderr,
+-				"smbpasswd is not able to initialize the "
+-				"messaging context!\n");
+-			return 1;
+-		}
+-	}
+-
+ 	/*
+ 	 * Set the machine NETBIOS name if not already
+ 	 * set from the config file. 
+diff --git a/source3/utils/wscript_build b/source3/utils/wscript_build
+index 67bb87e7a74..06a986cada4 100644
+--- a/source3/utils/wscript_build
++++ b/source3/utils/wscript_build
+@@ -37,7 +37,9 @@ bld.SAMBA3_BINARY('smbpasswd',
+                  smbconf
+                  pdb
+                  PASSWD_UTIL
+-                 PASSCHANGE''')
++                 PASSCHANGE
++                 cmdline_contexts
++                 ''')
+ 
+ bld.SAMBA3_BINARY('pdbedit',
+                  source='pdbedit.c',
+-- 
+2.13.6
+
+
+From 305cf6a251e395c895f04b2590125dec430a08e6 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 15:46:27 -0700
+Subject: [PATCH 10/22] s3:smbstatus: Use cmdline_messaging_context
+
+Use cmdline_messaging_context to initialize a messaging context instead
+of open coding the same steps.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit d7fa3815a83a50fd9e3d78cac0d5ef3eb79235e5)
+---
+ source3/utils/status.c | 25 +++----------------------
+ source3/wscript_build  |  1 +
+ 2 files changed, 4 insertions(+), 22 deletions(-)
+
+diff --git a/source3/utils/status.c b/source3/utils/status.c
+index d04efedee3f..1d68219a5ac 100644
+--- a/source3/utils/status.c
++++ b/source3/utils/status.c
+@@ -48,6 +48,7 @@
+ #include "serverid.h"
+ #include "status_profile.h"
+ #include "smbd/notifyd/notifyd.h"
++#include "cmdline_contexts.h"
+ 
+ #define SMB_MAXPIDS		2048
+ static uid_t 		Ucrit_uid = 0;               /* added by OH */
+@@ -528,7 +529,6 @@ int main(int argc, const char *argv[])
+ 	};
+ 	TALLOC_CTX *frame = talloc_stackframe();
+ 	int ret = 0;
+-	struct tevent_context *ev;
+ 	struct messaging_context *msg_ctx = NULL;
+ 	char *db_path;
+ 	bool ok;
+@@ -607,28 +607,9 @@ int main(int argc, const char *argv[])
+ 		d_printf("using configfile = %s\n", get_dyn_CONFIGFILE());
+ 	}
+ 
+-	if (!lp_load_initial_only(get_dyn_CONFIGFILE())) {
+-		fprintf(stderr, "Can't load %s - run testparm to debug it\n",
+-			get_dyn_CONFIGFILE());
+-		ret = -1;
+-		goto done;
+-	}
+-
+-
+-	/*
+-	 * This implicitly initializes the global ctdbd connection,
+-	 * usable by the db_open() calls further down.
+-	 */
+-	ev = samba_tevent_context_init(NULL);
+-	if (ev == NULL) {
+-		fprintf(stderr, "samba_tevent_context_init failed\n");
+-		ret = -1;
+-		goto done;
+-	}
+-
+-	msg_ctx = messaging_init(NULL, ev);
++	msg_ctx = cmdline_messaging_context(get_dyn_CONFIGFILE());
+ 	if (msg_ctx == NULL) {
+-		fprintf(stderr, "messaging_init failed\n");
++		fprintf(stderr, "Could not initialize messaging, not root?\n");
+ 		ret = -1;
+ 		goto done;
+ 	}
+diff --git a/source3/wscript_build b/source3/wscript_build
+index 250b7f1ff52..36cfd5dada7 100644
+--- a/source3/wscript_build
++++ b/source3/wscript_build
+@@ -1157,6 +1157,7 @@ bld.SAMBA3_BINARY('smbstatus',
+                       talloc
+                       smbconf
+                       popt_samba3
++                      cmdline_contexts
+                       smbd_base
+                       LOCKING
+                       PROFILE
+-- 
+2.13.6
+
+
+From 27e80482d1d37aaacbca7ca6eff6000c78349da7 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 15:54:11 -0700
+Subject: [PATCH 11/22] rpcclient: Use cmdline_messaging_context
+
+Use cmdline_messaging_context with its error checking instead of open
+coding the same steps.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit dd3ae2ffdc66be4707471bfccf27ef446b5599cb)
+---
+ source3/rpcclient/rpcclient.c | 28 ++--------------------------
+ 1 file changed, 2 insertions(+), 26 deletions(-)
+
+diff --git a/source3/rpcclient/rpcclient.c b/source3/rpcclient/rpcclient.c
+index f7e196226cf..9f95f1a7a8c 100644
+--- a/source3/rpcclient/rpcclient.c
++++ b/source3/rpcclient/rpcclient.c
+@@ -35,6 +35,7 @@
+ #include "auth/gensec/gensec.h"
+ #include "../libcli/smb/smbXcli_base.h"
+ #include "messages.h"
++#include "cmdline_contexts.h"
+ 
+ enum pipe_auth_type_spnego {
+ 	PIPE_AUTH_TYPE_SPNEGO_NONE = 0,
+@@ -950,7 +951,6 @@ static NTSTATUS process_cmd(struct user_auth_info *auth_info,
+ 	const char *binding_string = NULL;
+ 	const char *host;
+ 	int signing_state = SMB_SIGNING_IPC_DEFAULT;
+-	struct tevent_context *ev_ctx = NULL;
+ 
+ 	/* make sure the vars that get altered (4th field) are in
+ 	   a fixed location or certain compilers complain */
+@@ -1016,30 +1016,7 @@ static NTSTATUS process_cmd(struct user_auth_info *auth_info,
+ 	poptFreeContext(pc);
+ 	popt_burn_cmdline_password(argc, argv);
+ 
+-	ev_ctx = samba_tevent_context_init(frame);
+-	if (ev_ctx == NULL) {
+-		fprintf(stderr, "Could not init event context\n");
+-		result = 1;
+-		goto done;
+-	}
+-
+-	nt_status = messaging_init_client(ev_ctx,
+-					  ev_ctx,
+-					  &rpcclient_msg_ctx);
+-	if (geteuid() != 0 &&
+-			NT_STATUS_EQUAL(nt_status, NT_STATUS_ACCESS_DENIED)) {
+-		/*
+-		 * Normal to fail to initialize messaging context
+-		 * if we're not root as we don't have ability to
+-		 * read lock directory.
+-		 */
+-		DBG_NOTICE("Unable to initialize messaging context. "
+-			"Must be root to do that.\n");
+-	} else if (!NT_STATUS_IS_OK(nt_status)) {
+-		fprintf(stderr, "Could not init messaging context\n");
+-		result = 1;
+-		goto done;
+-	}
++	rpcclient_msg_ctx = cmdline_messaging_context(get_dyn_CONFIGFILE());
+ 
+ 	if (!init_names()) {
+ 		result = 1;
+@@ -1258,7 +1235,6 @@ static NTSTATUS process_cmd(struct user_auth_info *auth_info,
+ 	popt_free_cmdline_auth_info();
+ 	netlogon_creds_cli_close_global_db();
+ 	TALLOC_FREE(rpcclient_msg_ctx);
+-	TALLOC_FREE(ev_ctx);
+ 	TALLOC_FREE(frame);
+ 	return result;
+ }
+-- 
+2.13.6
+
+
+From eaa0cb2c039c9c8ef838f259efcaffc59033bbbf Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 16:01:00 -0700
+Subject: [PATCH 12/22] s3:net: Use cmdline_messaging_context
+
+Use cmdline_messaging_context with its error checking instead of open
+coding the same steps.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit f2b659e4f518ccb06f221dd028f99883ca1a1847)
+---
+ source3/utils/net.c | 29 ++---------------------------
+ 1 file changed, 2 insertions(+), 27 deletions(-)
+
+diff --git a/source3/utils/net.c b/source3/utils/net.c
+index 76b8677bf78..759d8cd442b 100644
+--- a/source3/utils/net.c
++++ b/source3/utils/net.c
+@@ -48,6 +48,7 @@
+ #include "../libcli/security/security.h"
+ #include "passdb.h"
+ #include "messages.h"
++#include "cmdline_contexts.h"
+ 
+ #ifdef WITH_FAKE_KASERVER
+ #include "utils/net_afs.h"
+@@ -915,9 +916,7 @@ static struct functable net_func[] = {
+ 	const char **argv_const = discard_const_p(const char *, argv);
+ 	poptContext pc;
+ 	TALLOC_CTX *frame = talloc_stackframe();
+-	struct tevent_context *ev;
+ 	struct net_context *c = talloc_zero(frame, struct net_context);
+-	NTSTATUS status;
+ 
+ 	struct poptOption long_options[] = {
+ 		{"help",	'h', POPT_ARG_NONE,   0, 'h'},
+@@ -1031,31 +1030,7 @@ static struct functable net_func[] = {
+ 		}
+ 	}
+ 
+-	if (!lp_load_initial_only(get_dyn_CONFIGFILE())) {
+-		d_fprintf(stderr, "Can't load %s - run testparm to debug it\n",
+-			  get_dyn_CONFIGFILE());
+-		exit(1);
+-	}
+-
+-	ev = samba_tevent_context_init(c);
+-	if (ev == NULL) {
+-		d_fprintf(stderr, "samba_tevent_context_init failed\n");
+-		exit(1);
+-	}
+-	status = messaging_init_client(c, ev, &c->msg_ctx);
+-	if (geteuid() != 0 &&
+-			NT_STATUS_EQUAL(status, NT_STATUS_ACCESS_DENIED)) {
+-		/*
+-		 * Normal to fail to initialize messaging context
+-		 * if we're not root as we don't have ability to
+-		 * read lock directory.
+-		 */
+-		DBG_NOTICE("Unable to initialize messaging context. "
+-			"Must be root to do that.\n");
+-	} else if (!NT_STATUS_IS_OK(status)) {
+-		d_fprintf(stderr, "Failed to init messaging context\n");
+-		exit(1);
+-	}
++	c->msg_ctx = cmdline_messaging_context(get_dyn_CONFIGFILE());
+ 
+ 	if (!lp_load_global(get_dyn_CONFIGFILE())) {
+ 		d_fprintf(stderr, "Can't load %s - run testparm to debug it\n",
+-- 
+2.13.6
+
+
+From 8cb95d9ad621db6adf627b439745691c8ff09d66 Mon Sep 17 00:00:00 2001
+From: Ralph Boehme <slow@samba.org>
+Date: Tue, 10 Jul 2018 16:29:46 +0200
+Subject: [PATCH 13/22] s3:messaging: remove unused messaging_init_client()
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Christof Schmitt <cs@samba.org>
+(cherry picked from commit f56496b11469f0e9af9ba81cefb796ca1febabb1)
+---
+ source3/include/messages.h | 3 ---
+ source3/lib/messages.c     | 9 ---------
+ 2 files changed, 12 deletions(-)
+
+diff --git a/source3/include/messages.h b/source3/include/messages.h
+index 29c394af317..f7b40664b0b 100644
+--- a/source3/include/messages.h
++++ b/source3/include/messages.h
+@@ -46,9 +46,6 @@ struct messaging_rec;
+ 
+ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx, 
+ 					 struct tevent_context *ev);
+-NTSTATUS messaging_init_client(TALLOC_CTX *mem_ctx,
+-			       struct tevent_context *ev,
+-			       struct messaging_context **pmsg_ctx);
+ 
+ struct server_id messaging_server_id(const struct messaging_context *msg_ctx);
+ struct tevent_context *messaging_tevent_context(
+diff --git a/source3/lib/messages.c b/source3/lib/messages.c
+index dab53f1c48e..90fffa2c872 100644
+--- a/source3/lib/messages.c
++++ b/source3/lib/messages.c
+@@ -635,15 +635,6 @@ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx,
+ 	return ctx;
+ }
+ 
+-NTSTATUS messaging_init_client(TALLOC_CTX *mem_ctx,
+-			       struct tevent_context *ev,
+-			       struct messaging_context **pmsg_ctx)
+-{
+-	return messaging_init_internal(mem_ctx,
+-					ev,
+-					pmsg_ctx);
+-}
+-
+ struct server_id messaging_server_id(const struct messaging_context *msg_ctx)
+ {
+ 	return msg_ctx->id;
+-- 
+2.13.6
+
+
+From 37ad220effcfea97929483e84477fae2e48d0be8 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 16:08:21 -0700
+Subject: [PATCH 14/22] s3:pdbedit: Use cmdline_messaging_context
+
+Initialize the messaging context through cmdline_messaging_context to
+allow access to config in clustered Samba.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 4661537c201acebee991d219d151cb481f56265c)
+---
+ source3/utils/pdbedit.c     | 3 +++
+ source3/utils/wscript_build | 1 +
+ 2 files changed, 4 insertions(+)
+
+diff --git a/source3/utils/pdbedit.c b/source3/utils/pdbedit.c
+index 5c947e2fbde..a2394880c65 100644
+--- a/source3/utils/pdbedit.c
++++ b/source3/utils/pdbedit.c
+@@ -25,6 +25,7 @@
+ #include "../librpc/gen_ndr/samr.h"
+ #include "../libcli/security/security.h"
+ #include "passdb.h"
++#include "cmdline_contexts.h"
+ 
+ #define BIT_BACKEND	0x00000004
+ #define BIT_VERBOSE	0x00000008
+@@ -1121,6 +1122,8 @@ int main(int argc, const char **argv)
+ 	if (user_name == NULL)
+ 		user_name = poptGetArg(pc);
+ 
++	cmdline_messaging_context(get_dyn_CONFIGFILE());
++
+ 	if (!lp_load_global(get_dyn_CONFIGFILE())) {
+ 		fprintf(stderr, "Can't load %s - run testparm to debug it\n", get_dyn_CONFIGFILE());
+ 		exit(1);
+diff --git a/source3/utils/wscript_build b/source3/utils/wscript_build
+index 06a986cada4..570c4506bee 100644
+--- a/source3/utils/wscript_build
++++ b/source3/utils/wscript_build
+@@ -47,6 +47,7 @@ bld.SAMBA3_BINARY('pdbedit',
+                  talloc
+                  smbconf
+                  popt_samba3
++                 cmdline_contexts
+                  pdb
+                  PASSWD_UTIL''')
+ 
+-- 
+2.13.6
+
+
+From 375f013eaeb9d4c2592f68cd10374f61e2d12533 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 16:11:11 -0700
+Subject: [PATCH 15/22] s3:testparm: Use cmdline_messaging_context
+
+Call cmdline_messaging_context to initialize a messaging config before
+accessing clustered Samba config.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit ea7a4ff7ae5ef2b22fb7ef5640d6b946c064cfc3)
+---
+ source3/utils/testparm.c    | 3 +++
+ source3/utils/wscript_build | 4 +++-
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/source3/utils/testparm.c b/source3/utils/testparm.c
+index 8113eea0020..88dfc42d492 100644
+--- a/source3/utils/testparm.c
++++ b/source3/utils/testparm.c
+@@ -35,6 +35,7 @@
+ #include "system/filesys.h"
+ #include "popt_common.h"
+ #include "lib/param/loadparm.h"
++#include "cmdline_contexts.h"
+ 
+ #include <regex.h>
+ 
+@@ -698,6 +699,8 @@ static void do_per_share_checks(int s)
+ 		goto done;
+ 	}
+ 
++	cmdline_messaging_context(config_file);
++
+ 	fprintf(stderr,"Load smb config files from %s\n",config_file);
+ 
+ 	if (!lp_load_with_registry_shares(config_file)) {
+diff --git a/source3/utils/wscript_build b/source3/utils/wscript_build
+index 570c4506bee..ffa0762d828 100644
+--- a/source3/utils/wscript_build
++++ b/source3/utils/wscript_build
+@@ -163,7 +163,9 @@ bld.SAMBA3_BINARY('testparm',
+                  deps='''
+                  talloc
+                  smbconf
+-                 popt_samba3''')
++                 popt_samba3
++                 cmdline_contexts
++                 ''')
+ 
+ bld.SAMBA3_BINARY('net',
+                  source='''net.c
+-- 
+2.13.6
+
+
+From 96d91b1d4c60552b1ed7058a4d9ed2b06a929c57 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 16:15:02 -0700
+Subject: [PATCH 16/22] s3:sharesec: Use cmdline_messaging_context
+
+Call cmdline_messasging_context to initialize messaging context before
+accessing clustered Samba config.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit cab8f27bbc927e48c52bac6350325e8ec38092b2)
+---
+ source3/utils/sharesec.c    | 2 ++
+ source3/utils/wscript_build | 4 +++-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/source3/utils/sharesec.c b/source3/utils/sharesec.c
+index d9f81587f0e..375ae582ae5 100644
+--- a/source3/utils/sharesec.c
++++ b/source3/utils/sharesec.c
+@@ -28,6 +28,7 @@ struct cli_state;
+ #include "../libcli/security/security.h"
+ #include "passdb/machine_sid.h"
+ #include "util_sd.h"
++#include "cmdline_contexts.h"
+ 
+ static TALLOC_CTX *ctx;
+ 
+@@ -420,6 +421,7 @@ int main(int argc, const char *argv[])
+ 
+ 	setlinebuf(stdout);
+ 
++	cmdline_messaging_context(get_dyn_CONFIGFILE());
+ 	lp_load_with_registry_shares(get_dyn_CONFIGFILE());
+ 
+ 	/* check for initializing secrets.tdb first */
+diff --git a/source3/utils/wscript_build b/source3/utils/wscript_build
+index ffa0762d828..7e586dc268d 100644
+--- a/source3/utils/wscript_build
++++ b/source3/utils/wscript_build
+@@ -98,7 +98,9 @@ bld.SAMBA3_BINARY('sharesec',
+                  talloc
+                  msrpc3
+                  libcli_lsa3
+-                 popt_samba3''')
++                 popt_samba3
++                 cmdline_contexts
++                 ''')
+ 
+ bld.SAMBA3_BINARY('log2pcap',
+                  source='log2pcaphex.c',
+-- 
+2.13.6
+
+
+From 389d7e32dc9f02b037ab9c2d0db1095f88f64145 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 16:18:20 -0700
+Subject: [PATCH 17/22] s3: ntlm_auth: Use cmdline_messaging_context
+
+Call cmdline_messaging_context to initialize the messaging context
+before accessing clustered Samba config.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 9ed617474f588ceb42c8929ee8a51071a408c219)
+---
+ source3/utils/ntlm_auth.c   | 3 +++
+ source3/utils/wscript_build | 1 +
+ 2 files changed, 4 insertions(+)
+
+diff --git a/source3/utils/ntlm_auth.c b/source3/utils/ntlm_auth.c
+index 7d27712980b..b8014ec1034 100644
+--- a/source3/utils/ntlm_auth.c
++++ b/source3/utils/ntlm_auth.c
+@@ -47,6 +47,7 @@
+ #include "nsswitch/libwbclient/wbclient.h"
+ #include "lib/param/loadparm.h"
+ #include "lib/util/base64.h"
++#include "cmdline_contexts.h"
+ 
+ #if HAVE_KRB5
+ #include "auth/kerberos/pac_utils.h"
+@@ -2380,6 +2381,8 @@ enum {
+ 
+ 	poptFreeContext(pc);
+ 
++	cmdline_messaging_context(get_dyn_CONFIGFILE());
++
+ 	if (!lp_load_global(get_dyn_CONFIGFILE())) {
+ 		d_fprintf(stderr, "ntlm_auth: error opening config file %s. Error was %s\n",
+ 			get_dyn_CONFIGFILE(), strerror(errno));
+diff --git a/source3/utils/wscript_build b/source3/utils/wscript_build
+index 7e586dc268d..92404a61c2d 100644
+--- a/source3/utils/wscript_build
++++ b/source3/utils/wscript_build
+@@ -128,6 +128,7 @@ bld.SAMBA3_BINARY('ntlm_auth',
+                  tiniparser
+                  libsmb
+                  popt_samba3
++                 cmdline_contexts
+                  gse gensec''')
+ 
+ bld.SAMBA3_BINARY('dbwrap_tool',
+-- 
+2.13.6
+
+
+From 6a08003f378ddc270597465509cf4b34837d8dc8 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Mon, 20 Aug 2018 16:21:51 -0700
+Subject: [PATCH 18/22] s3:eventlogadm: Use cmdline_messaging_context
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 095123df945270bc51635a19125a7abdfcd4ab80)
+---
+ source3/utils/eventlogadm.c | 4 ++++
+ source3/utils/wscript_build | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/source3/utils/eventlogadm.c b/source3/utils/eventlogadm.c
+index 5ef091a9ae3..db874dfae8a 100644
+--- a/source3/utils/eventlogadm.c
++++ b/source3/utils/eventlogadm.c
+@@ -30,6 +30,7 @@
+ #include "registry/reg_util_token.h"
+ #include "registry/reg_backend_db.h"
+ #include "../libcli/registry/util_reg.h"
++#include "cmdline_contexts.h"
+ 
+ extern int optind;
+ extern char *optarg;
+@@ -472,6 +473,9 @@ int main( int argc, char *argv[] )
+ 		exit( 1 );
+ 	}
+ 
++	cmdline_messaging_context(configfile == NULL ?
++				  get_dyn_CONFIGFILE() : configfile);
++
+ 	if ( configfile == NULL ) {
+ 		lp_load_global(get_dyn_CONFIGFILE());
+ 	} else if (!lp_load_global(configfile)) {
+diff --git a/source3/utils/wscript_build b/source3/utils/wscript_build
+index 92404a61c2d..eabebcf3d52 100644
+--- a/source3/utils/wscript_build
++++ b/source3/utils/wscript_build
+@@ -89,6 +89,7 @@ bld.SAMBA3_BINARY('eventlogadm',
+                  deps='''
+                  talloc
+                  smbconf
++                 cmdline_contexts
+                  LIBEVENTLOG''',
+                  install_path='${SBINDIR}')
+ 
+-- 
+2.13.6
+
+
+From 6f32f75ad43b4e49de5af794beb134252267b768 Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Tue, 21 Aug 2018 12:34:34 -0700
+Subject: [PATCH 19/22] s3:dbwrap_tool: Use cmdline_messaging_context
+
+Initialize the messaging context through cmdline_messaging_context to
+allow access to config in clustered Samba.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 7eeff96b826711b5a8d44ab24603dafcc0343d84)
+---
+ source3/utils/dbwrap_tool.c | 3 +++
+ source3/utils/wscript_build | 4 +++-
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/source3/utils/dbwrap_tool.c b/source3/utils/dbwrap_tool.c
+index 94aacd8ba26..b182e9cbfab 100644
+--- a/source3/utils/dbwrap_tool.c
++++ b/source3/utils/dbwrap_tool.c
+@@ -28,6 +28,7 @@
+ #include "dbwrap/dbwrap_watch.h"
+ #include "messages.h"
+ #include "util_tdb.h"
++#include "cmdline_contexts.h"
+ 
+ enum dbwrap_op { OP_FETCH, OP_STORE, OP_DELETE, OP_ERASE, OP_LISTKEYS,
+ 		 OP_EXISTS };
+@@ -428,6 +429,8 @@ int main(int argc, const char **argv)
+ 		while (extra_argv[extra_argc]) extra_argc++;
+ 	}
+ 
++	cmdline_messaging_context(get_dyn_CONFIGFILE());
++
+ 	lp_load_global(get_dyn_CONFIGFILE());
+ 
+ 	if ((extra_argc < 2) || (extra_argc > 5)) {
+diff --git a/source3/utils/wscript_build b/source3/utils/wscript_build
+index eabebcf3d52..11bd2015c3a 100644
+--- a/source3/utils/wscript_build
++++ b/source3/utils/wscript_build
+@@ -136,7 +136,9 @@ bld.SAMBA3_BINARY('dbwrap_tool',
+                  source='dbwrap_tool.c',
+                  deps='''
+                  talloc
+-                 popt_samba3''')
++                 popt_samba3
++                 cmdline_contexts
++                 ''')
+ 
+ bld.SAMBA3_BINARY('dbwrap_torture',
+                  source='dbwrap_torture.c',
+-- 
+2.13.6
+
+
+From f23f129047edd4b6fd6163a7795e48be3e59b49c Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Tue, 21 Aug 2018 12:35:11 -0700
+Subject: [PATCH 20/22] s3:smbcontrol: Use cmdline_messaging_context
+
+Initialize the messaging context through cmdline_messaging_context to
+allow access to config in clustered Samba.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit de040eafbd7d729316d757c14c44df163a4b36ad)
+---
+ source3/utils/smbcontrol.c  | 19 +++++++++++--------
+ source3/utils/wscript_build |  1 +
+ 2 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/source3/utils/smbcontrol.c b/source3/utils/smbcontrol.c
+index bd89b9ebf0a..ecf27801f8a 100644
+--- a/source3/utils/smbcontrol.c
++++ b/source3/utils/smbcontrol.c
+@@ -35,6 +35,7 @@
+ #include "util_tdb.h"
+ #include "../lib/util/pidfile.h"
+ #include "serverid.h"
++#include "cmdline_contexts.h"
+ 
+ #if HAVE_LIBUNWIND_H
+ #include <libunwind.h>
+@@ -1609,21 +1610,23 @@ int main(int argc, const char **argv)
+ 	if (argc <= 1)
+ 		usage(pc);
+ 
++	msg_ctx = cmdline_messaging_context(get_dyn_CONFIGFILE());
++	if (msg_ctx == NULL) {
++		fprintf(stderr,
++			"Could not init messaging context, not root?\n");
++		TALLOC_FREE(frame);
++		exit(1);
++	}
++
++	evt_ctx = server_event_context();
++
+ 	lp_load_global(get_dyn_CONFIGFILE());
+ 
+ 	/* Need to invert sense of return code -- samba
+          * routines mostly return True==1 for success, but
+          * shell needs 0. */ 
+ 
+-	if (!(evt_ctx = samba_tevent_context_init(NULL)) ||
+-	    !(msg_ctx = messaging_init(NULL, evt_ctx))) {
+-		fprintf(stderr, "could not init messaging context\n");
+-		TALLOC_FREE(frame);
+-		exit(1);
+-	}
+-
+ 	ret = !do_command(evt_ctx, msg_ctx, argc, argv);
+-	TALLOC_FREE(msg_ctx);
+ 	TALLOC_FREE(frame);
+ 	return ret;
+ }
+diff --git a/source3/utils/wscript_build b/source3/utils/wscript_build
+index 11bd2015c3a..6793c6d5c8a 100644
+--- a/source3/utils/wscript_build
++++ b/source3/utils/wscript_build
+@@ -18,6 +18,7 @@ bld.SAMBA3_BINARY('smbcontrol',
+                  talloc
+                  smbconf
+                  popt_samba3
++                 cmdline_contexts
+                  PRINTBASE''')
+ 
+ bld.SAMBA3_BINARY('smbtree',
+-- 
+2.13.6
+
+
+From 4f57a7b28cc1b705f34444f795724e3d3a06d99c Mon Sep 17 00:00:00 2001
+From: Christof Schmitt <cs@samba.org>
+Date: Tue, 21 Aug 2018 16:11:02 -0700
+Subject: [PATCH 21/22] s3:smbget: Use cmdline_messaging_context
+
+Initialize the messaging context through cmdline_messaging_context to
+allow access to config in clustered Samba.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Christof Schmitt <cs@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 20ed13923ed3c55e1b293e5440028d29384e9d3a)
+---
+ source3/utils/smbget.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/source3/utils/smbget.c b/source3/utils/smbget.c
+index 37462fa131f..4653c6894e0 100644
+--- a/source3/utils/smbget.c
++++ b/source3/utils/smbget.c
+@@ -20,6 +20,7 @@
+ #include "system/filesys.h"
+ #include "popt_common_cmdline.h"
+ #include "libsmbclient.h"
++#include "cmdline_contexts.h"
+ 
+ static int columns = 0;
+ 
+@@ -879,6 +880,8 @@ int main(int argc, char **argv)
+ 
+ 	popt_burn_cmdline_password(argc, argv);
+ 
++	cmdline_messaging_context(get_dyn_CONFIGFILE());
++
+ 	if (smbc_init(get_auth_data, opt.debuglevel) < 0) {
+ 		fprintf(stderr, "Unable to initialize libsmbclient\n");
+ 		return 1;
+-- 
+2.13.6
+
+
+From 8fb42e4a751af55e6e56cd4e64029228f1cc36c3 Mon Sep 17 00:00:00 2001
+From: Volker Lendecke <vl@samba.org>
+Date: Fri, 7 Sep 2018 07:27:46 +0200
+Subject: [PATCH 22/22] examples: Fix the smb2mount build
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13465
+
+Signed-off-by: Volker Lendecke <vl@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 94852e3544bf2cace3ddba8b9c89d986d77fdab5)
+---
+ examples/fuse/smb2mount.c   | 2 +-
+ examples/fuse/wscript_build | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/examples/fuse/smb2mount.c b/examples/fuse/smb2mount.c
+index 816b0b597ad..ec4be809f6d 100644
+--- a/examples/fuse/smb2mount.c
++++ b/examples/fuse/smb2mount.c
+@@ -20,7 +20,7 @@
+ 
+ #include "source3/include/includes.h"
+ #include "popt.h"
+-#include "popt_common.h"
++#include "popt_common_cmdline.h"
+ #include "client.h"
+ #include "libsmb/proto.h"
+ #include "clifuse.h"
+diff --git a/examples/fuse/wscript_build b/examples/fuse/wscript_build
+index 9ec5fc0a0f2..31341e4357d 100644
+--- a/examples/fuse/wscript_build
++++ b/examples/fuse/wscript_build
+@@ -3,5 +3,5 @@
+ if bld.env.HAVE_FUSE:
+     bld.SAMBA_BINARY('smb2mount',
+                      source='smb2mount.c clifuse.c',
+-                     deps='smbconf popt_samba3 libsmb fuse',
++                     deps='smbconf popt_samba3_cmdline libsmb fuse',
+                      install=False)
+-- 
+2.13.6
+

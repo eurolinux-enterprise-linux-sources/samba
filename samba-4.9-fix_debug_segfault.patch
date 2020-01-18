@@ -1,0 +1,40 @@
+From 99c354431703a4408f0208e3f2b06a9da81937f2 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 7 Nov 2018 14:32:29 +0100
+Subject: [PATCH] lib:util: Fix DEBUGCLASS pointer initializiation
+
+This fixes a segfault in pyglue:
+
+==10142== Process terminating with default action of signal 11 (SIGSEGV)
+==10142==  Bad permissions for mapped region at address 0x6F00A20
+==10142==    at 0x6F1074B: py_set_debug_level (pyglue.c:165)
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13679
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+(cherry picked from commit 71ef09c1afdbf967b829cb66b33c3a5cb1c18ba0)
+---
+ lib/util/debug.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/util/debug.c b/lib/util/debug.c
+index d41e0f99c77..847ec1f0a0c 100644
+--- a/lib/util/debug.c
++++ b/lib/util/debug.c
+@@ -557,10 +557,10 @@ static const char *default_classname_table[] = {
+  * This is to allow reading of DEBUGLEVEL_CLASS before the debug
+  * system has been initialized.
+  */
+-static const int debug_class_list_initial[ARRAY_SIZE(default_classname_table)];
++static int debug_class_list_initial[ARRAY_SIZE(default_classname_table)];
+ 
+ static size_t debug_num_classes = 0;
+-int     *DEBUGLEVEL_CLASS = discard_const_p(int, debug_class_list_initial);
++int     *DEBUGLEVEL_CLASS = debug_class_list_initial;
+ 
+ 
+ /* -------------------------------------------------------------------------- **
+-- 
+2.19.1
+

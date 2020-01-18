@@ -1,0 +1,252 @@
+From 14d3e54fa87dc204223eba2c7e18b6e1bf0e4564 Mon Sep 17 00:00:00 2001
+From: Justin Stephenson <jstephen@redhat.com>
+Date: Thu, 3 Jan 2019 12:07:01 -0500
+Subject: [PATCH 1/5] s3:libsmb: Check disable_netbios in socket connect
+
+If the disable_netbios option is set then return NT_STATUS_NOT_SUPPORTED
+for a port 139 connection in the low level socket connection code.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13727
+
+Signed-off-by: Justin Stephenson <jstephen@redhat.com>
+Reviewed-by: Noel Power <nopower@suse.com>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+(cherry picked from commit 78f51a1d3c53248159c1e7643364b62e52457bb9)
+---
+ source3/libsmb/smbsock_connect.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/source3/libsmb/smbsock_connect.c b/source3/libsmb/smbsock_connect.c
+index 9f915e1bb42..bb3cb07646c 100644
+--- a/source3/libsmb/smbsock_connect.c
++++ b/source3/libsmb/smbsock_connect.c
+@@ -376,6 +376,11 @@ struct tevent_req *smbsock_connect_send(TALLOC_CTX *mem_ctx,
+ 	tevent_req_set_cleanup_fn(req, smbsock_connect_cleanup);
+ 
+ 	if (port == NBT_SMB_PORT) {
++		if (lp_disable_netbios()) {
++			tevent_req_nterror(req, NT_STATUS_NOT_SUPPORTED);
++			return tevent_req_post(req, ev);
++		}
++
+ 		state->req_139 = nb_connect_send(state, state->ev, state->addr,
+ 						 state->called_name,
+ 						 state->called_type,
+-- 
+2.20.1
+
+
+From 94491362b882e49757f8ecd8e133149457e2f2e5 Mon Sep 17 00:00:00 2001
+From: Justin Stephenson <jstephen@redhat.com>
+Date: Mon, 17 Dec 2018 14:40:33 -0500
+Subject: [PATCH 2/5] s3:libsmb: Print debug message about Netbios
+
+With a preceding patch, cli_connect_nb() will return
+NT_STATUS_NOT_SUPPORTED when 'disable netbios' is set in smb.conf.
+
+Print an informative error message to indicate Netbios is disabled
+if this occurs.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13727
+
+Signed-off-by: Justin Stephenson <jstephen@redhat.com>
+Reviewed-by: Noel Power <nopower@suse.com>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+(cherry picked from commit 499f051c9d527a14f9712365f8403a1ee0662c5b)
+---
+ source3/libsmb/clidfs.c        | 10 +++++++---
+ source3/libsmb/libsmb_server.c |  4 ++++
+ 2 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/source3/libsmb/clidfs.c b/source3/libsmb/clidfs.c
+index 0dfb8b33606..4342a3b1d1b 100644
+--- a/source3/libsmb/clidfs.c
++++ b/source3/libsmb/clidfs.c
+@@ -196,9 +196,13 @@ static NTSTATUS do_connect(TALLOC_CTX *ctx,
+ 		flags, &c);
+ 
+ 	if (!NT_STATUS_IS_OK(status)) {
+-		d_printf("Connection to %s failed (Error %s)\n",
+-				server,
+-				nt_errstr(status));
++		if (NT_STATUS_EQUAL(status, NT_STATUS_NOT_SUPPORTED)) {
++			DBG_ERR("NetBIOS support disabled, unable to connect");
++		}
++
++		DBG_WARNING("Connection to %s failed (Error %s)\n",
++			    server,
++			    nt_errstr(status));
+ 		return status;
+ 	}
+ 
+diff --git a/source3/libsmb/libsmb_server.c b/source3/libsmb/libsmb_server.c
+index 67dfcf72327..0067df48cac 100644
+--- a/source3/libsmb/libsmb_server.c
++++ b/source3/libsmb/libsmb_server.c
+@@ -489,6 +489,10 @@ SMBC_server_internal(TALLOC_CTX *ctx,
+ 	}
+ 
+ 	if (!NT_STATUS_IS_OK(status)) {
++		if (NT_STATUS_EQUAL(status, NT_STATUS_NOT_SUPPORTED)) {
++			DBG_ERR("NetBIOS support disabled, unable to connect");
++		}
++
+ 		errno = map_errno_from_nt_status(status);
+ 		return NULL;
+ 	}
+-- 
+2.20.1
+
+
+From a0e7b2e45efe680971ded1b66ea919f3fa4a9ad4 Mon Sep 17 00:00:00 2001
+From: Justin Stephenson <jstephen@redhat.com>
+Date: Mon, 17 Dec 2018 14:57:59 -0500
+Subject: [PATCH 3/5] s3:smbpasswd: Print debug message about Netbios
+
+With a preceding patch, cli_connect_nb() will return
+NT_STATUS_NOT_SUPPORTED when 'disable netbios' is set in smb.conf.
+
+Print an informative error message to indicate Netbios is disabled
+if this occurs.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13727
+
+Signed-off-by: Justin Stephenson <jstephen@redhat.com>
+Reviewed-by: Noel Power <nopower@suse.com>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+(cherry picked from commit ecbb2f78cec6d9e6f5180c8ba274a1da2152f098)
+---
+ source3/libsmb/passchange.c | 16 ++++++++++++----
+ 1 file changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/source3/libsmb/passchange.c b/source3/libsmb/passchange.c
+index 48ffba8036f..f60e3079975 100644
+--- a/source3/libsmb/passchange.c
++++ b/source3/libsmb/passchange.c
+@@ -46,10 +46,18 @@ NTSTATUS remote_password_change(const char *remote_machine,
+ 	result = cli_connect_nb(remote_machine, NULL, 0, 0x20, NULL,
+ 				SMB_SIGNING_IPC_DEFAULT, 0, &cli);
+ 	if (!NT_STATUS_IS_OK(result)) {
+-		if (asprintf(err_str, "Unable to connect to SMB server on "
+-			 "machine %s. Error was : %s.\n",
+-			 remote_machine, nt_errstr(result))==-1) {
+-			*err_str = NULL;
++		if (NT_STATUS_EQUAL(result, NT_STATUS_NOT_SUPPORTED)) {
++			if (asprintf(err_str, "Unable to connect to SMB server on "
++				"machine %s. NetBIOS support disabled\n",
++				remote_machine) == -1) {
++				*err_str = NULL;
++			}
++		} else {
++			if (asprintf(err_str, "Unable to connect to SMB server on "
++				 "machine %s. Error was : %s.\n",
++				 remote_machine, nt_errstr(result))==-1) {
++				*err_str = NULL;
++			}
+ 		}
+ 		return result;
+ 	}
+-- 
+2.20.1
+
+
+From 5f5420b85b0467c0cb3237c82bd4c151bbb0133b Mon Sep 17 00:00:00 2001
+From: Justin Stephenson <jstephen@redhat.com>
+Date: Mon, 17 Dec 2018 15:17:24 -0500
+Subject: [PATCH 4/5] s3:utils:net: Print debug message about Netbios
+
+With a preceding patch, cli_connect_nb() will return
+NT_STATUS_NOT_SUPPORTED when 'disable netbios' is set in smb.conf.
+
+Print an informative error message to indicate Netbios is disabled
+if this occurs.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13727
+
+Signed-off-by: Justin Stephenson <jstephen@redhat.com>
+Reviewed-by: Noel Power <nopower@suse.com>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+(cherry picked from commit 08867de2efde05e4730b41a335d13f775e44e397)
+---
+ source3/utils/net_rpc.c  | 3 +++
+ source3/utils/net_time.c | 9 +++++++--
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/source3/utils/net_rpc.c b/source3/utils/net_rpc.c
+index 67fff2f4d1b..91ad90f9594 100644
+--- a/source3/utils/net_rpc.c
++++ b/source3/utils/net_rpc.c
+@@ -7431,6 +7431,9 @@ bool net_rpc_check(struct net_context *c, unsigned flags)
+ 				lp_netbios_name(), SMB_SIGNING_IPC_DEFAULT,
+ 				0, &cli);
+ 	if (!NT_STATUS_IS_OK(status)) {
++		if (NT_STATUS_EQUAL(status, NT_STATUS_NOT_SUPPORTED)) {
++			DBG_ERR("NetBIOS support disabled, unable to connect\n");
++		}
+ 		return false;
+ 	}
+ 	status = smbXcli_negprot(cli->conn, cli->timeout, PROTOCOL_CORE,
+diff --git a/source3/utils/net_time.c b/source3/utils/net_time.c
+index 0091fc86333..5e6cf2ea15d 100644
+--- a/source3/utils/net_time.c
++++ b/source3/utils/net_time.c
+@@ -37,8 +37,13 @@ static time_t cli_servertime(const char *host,
+ 	status = cli_connect_nb(host, dest_ss, 0, 0x20, lp_netbios_name(),
+ 				SMB_SIGNING_DEFAULT, 0, &cli);
+ 	if (!NT_STATUS_IS_OK(status)) {
+-		fprintf(stderr, _("Can't contact server %s. Error %s\n"),
+-			host, nt_errstr(status));
++		if (NT_STATUS_EQUAL(status, NT_STATUS_NOT_SUPPORTED)) {
++			fprintf(stderr, "Can't contact server %s. NetBIOS support disabled,"
++				" Error %s\n", host, nt_errstr(status));
++		} else {
++			fprintf(stderr, "Can't contact server %s. Error %s\n",
++				host, nt_errstr(status));
++		}
+ 		goto done;
+ 	}
+ 
+-- 
+2.20.1
+
+
+From c948bd0660c1ddba0205ccdbd156baefa1c27971 Mon Sep 17 00:00:00 2001
+From: Justin Stephenson <jstephen@redhat.com>
+Date: Mon, 14 Jan 2019 10:36:47 -0500
+Subject: [PATCH 5/5] s3:libsmb: Honor disable_netbios option in
+ smbsock_connect_send
+
+If disable_netbios is set, return before the tevent timer is triggered
+to prevent outgoing netbios connections.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13727
+
+Signed-off-by: Justin Stephenson <jstephen@redhat.com>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+(cherry picked from commit c324f84a2fa25e29d2f7879fbcd35ce0e76a78f8)
+---
+ source3/libsmb/smbsock_connect.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/source3/libsmb/smbsock_connect.c b/source3/libsmb/smbsock_connect.c
+index bb3cb07646c..be52b9a4f79 100644
+--- a/source3/libsmb/smbsock_connect.c
++++ b/source3/libsmb/smbsock_connect.c
+@@ -415,6 +415,13 @@ struct tevent_req *smbsock_connect_send(TALLOC_CTX *mem_ctx,
+ 	tevent_req_set_callback(state->req_445, smbsock_connect_connected,
+ 				req);
+ 
++	/*
++	 * Check for disable_netbios
++	 */
++	if (lp_disable_netbios()) {
++		return req;
++	}
++
+ 	/*
+ 	 * After 5 msecs, fire the 139 (NBT) request
+ 	 */
+-- 
+2.20.1
+

@@ -2386,7 +2386,6 @@ static NTSTATUS fruit_check_access(vfs_handle_struct *handle,
 				   uint32_t deny_mode)
 {
 	NTSTATUS status = NT_STATUS_OK;
-	struct byte_range_lock *br_lck = NULL;
 	bool open_for_reading, open_for_writing, deny_read, deny_write;
 	off_t off;
 	bool have_read = false;
@@ -2444,6 +2443,8 @@ static NTSTATUS fruit_check_access(vfs_handle_struct *handle,
 
 		/* Set locks */
 		if ((access_mask & FILE_READ_DATA) && have_read) {
+			struct byte_range_lock *br_lck = NULL;
+
 			off = access_to_netatalk_brl(fork_type, FILE_READ_DATA);
 			br_lck = do_lock(
 				handle->conn->sconn->msg_ctx, fsp,
@@ -2451,13 +2452,16 @@ static NTSTATUS fruit_check_access(vfs_handle_struct *handle,
 				READ_LOCK, POSIX_LOCK, false,
 				&status, NULL);
 
+			TALLOC_FREE(br_lck);
+
 			if (!NT_STATUS_IS_OK(status))  {
 				return status;
 			}
-			TALLOC_FREE(br_lck);
 		}
 
 		if ((deny_mode & DENY_READ) && have_read) {
+			struct byte_range_lock *br_lck = NULL;
+
 			off = denymode_to_netatalk_brl(fork_type, DENY_READ);
 			br_lck = do_lock(
 				handle->conn->sconn->msg_ctx, fsp,
@@ -2465,10 +2469,11 @@ static NTSTATUS fruit_check_access(vfs_handle_struct *handle,
 				READ_LOCK, POSIX_LOCK, false,
 				&status, NULL);
 
+			TALLOC_FREE(br_lck);
+
 			if (!NT_STATUS_IS_OK(status)) {
 				return status;
 			}
-			TALLOC_FREE(br_lck);
 		}
 	}
 
@@ -2494,6 +2499,8 @@ static NTSTATUS fruit_check_access(vfs_handle_struct *handle,
 
 		/* Set locks */
 		if ((access_mask & FILE_WRITE_DATA) && have_read) {
+			struct byte_range_lock *br_lck = NULL;
+
 			off = access_to_netatalk_brl(fork_type, FILE_WRITE_DATA);
 			br_lck = do_lock(
 				handle->conn->sconn->msg_ctx, fsp,
@@ -2501,13 +2508,15 @@ static NTSTATUS fruit_check_access(vfs_handle_struct *handle,
 				READ_LOCK, POSIX_LOCK, false,
 				&status, NULL);
 
+			TALLOC_FREE(br_lck);
+
 			if (!NT_STATUS_IS_OK(status)) {
 				return status;
 			}
-			TALLOC_FREE(br_lck);
-
 		}
 		if ((deny_mode & DENY_WRITE) && have_read) {
+			struct byte_range_lock *br_lck = NULL;
+
 			off = denymode_to_netatalk_brl(fork_type, DENY_WRITE);
 			br_lck = do_lock(
 				handle->conn->sconn->msg_ctx, fsp,
@@ -2515,14 +2524,13 @@ static NTSTATUS fruit_check_access(vfs_handle_struct *handle,
 				READ_LOCK, POSIX_LOCK, false,
 				&status, NULL);
 
+			TALLOC_FREE(br_lck);
+
 			if (!NT_STATUS_IS_OK(status)) {
 				return status;
 			}
-			TALLOC_FREE(br_lck);
 		}
 	}
-
-	TALLOC_FREE(br_lck);
 
 	return status;
 }
@@ -4002,6 +4010,11 @@ static ssize_t fruit_pread_meta(vfs_handle_struct *handle,
 		return 0;
 	}
 
+	if (fio == NULL) {
+		DBG_ERR("Failed to fetch fsp extension");
+		return -1;
+	}
+
 	/* Yes, macOS always reads from offset 0 */
 	offset = 0;
 	to_return = MIN(n, AFP_INFO_SIZE);
@@ -4064,6 +4077,11 @@ static ssize_t fruit_pread_rsrc(vfs_handle_struct *handle,
 {
 	struct fio *fio = (struct fio *)VFS_FETCH_FSP_EXTENSION(handle, fsp);
 	ssize_t nread;
+
+	if (fio == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	switch (fio->config->rsrc) {
 	case FRUIT_RSRC_STREAM:
@@ -4323,6 +4341,11 @@ static ssize_t fruit_pwrite_meta(vfs_handle_struct *handle,
 		return -1;
 	}
 
+	if (fio == NULL) {
+		DBG_ERR("Failed to fetch fsp extension");
+		return -1;
+	}
+
 	switch (fio->config->meta) {
 	case FRUIT_META_STREAM:
 		nwritten = fruit_pwrite_meta_stream(handle, fsp, data,
@@ -4399,6 +4422,11 @@ static ssize_t fruit_pwrite_rsrc(vfs_handle_struct *handle,
 {
 	struct fio *fio = (struct fio *)VFS_FETCH_FSP_EXTENSION(handle, fsp);
 	ssize_t nwritten;
+
+	if (fio == NULL) {
+		DBG_ERR("Failed to fetch fsp extension");
+		return -1;
+	}
 
 	switch (fio->config->rsrc) {
 	case FRUIT_RSRC_STREAM:
@@ -5486,6 +5514,11 @@ static int fruit_ftruncate_rsrc(struct vfs_handle_struct *handle,
 	struct fio *fio = (struct fio *)VFS_FETCH_FSP_EXTENSION(handle, fsp);
 	int ret;
 
+	if (fio == NULL) {
+		DBG_ERR("Failed to fetch fsp extension");
+		return -1;
+	}
+
 	switch (fio->config->rsrc) {
 	case FRUIT_RSRC_XATTR:
 		ret = fruit_ftruncate_rsrc_xattr(handle, fsp, offset);
@@ -5537,6 +5570,13 @@ static int fruit_ftruncate(struct vfs_handle_struct *handle,
 		  (intmax_t)offset);
 
 	if (fio == NULL) {
+		if (offset == 0 &&
+		    global_fruit_config.nego_aapl &&
+		    is_ntfs_stream_smb_fname(fsp->fsp_name) &&
+		    !is_ntfs_default_stream_smb_fname(fsp->fsp_name))
+		{
+			return SMB_VFS_NEXT_UNLINK(handle, fsp->fsp_name);
+		}
 		return SMB_VFS_NEXT_FTRUNCATE(handle, fsp, offset);
 	}
 
@@ -6515,12 +6555,12 @@ static bool fruit_tmsize_do_dirent(vfs_handle_struct *handle,
 		return true;
 	}
 
-	tm_size = bandsize * nbands;
-	if (tm_size > UINT64_MAX) {
+	if (bandsize > SIZE_MAX/nbands) {
 		DBG_ERR("tmsize overflow: bandsize [%zu] nbands [%zu]\n",
 			bandsize, nbands);
 		return false;
 	}
+	tm_size = bandsize * nbands;
 
 	if (state->total_size + tm_size < state->total_size) {
 		DBG_ERR("tmsize overflow: bandsize [%zu] nbands [%zu]\n",

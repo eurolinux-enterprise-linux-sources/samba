@@ -2,7 +2,7 @@
 
 import os
 
-VERSION="1.0.4"
+VERSION="1.0.6"
 
 def find_library(library_names, lookup_paths):
     for directory in lookup_paths:
@@ -44,6 +44,7 @@ def configure(conf):
             ''',
             'HAVE_DESTRUCTOR_ATTRIBUTE',
             addmain=False,
+            strict=True,
             msg='Checking for library destructor support')
 
         # check HAVE_FUNCTION_ATTRIBUTE_FORMAT
@@ -56,6 +57,7 @@ def configure(conf):
             ''',
             'HAVE_FUNCTION_ATTRIBUTE_FORMAT',
             addmain=False,
+            strict=True,
             msg='Checking for printf format validation support')
 
         conf.CHECK_HEADERS('security/pam_appl.h')

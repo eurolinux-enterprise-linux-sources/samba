@@ -136,36 +136,6 @@ bool ctdb_set_helper(const char *type, char *helper, size_t size,
 	return true;
 }
 
-/* Invoke an external program to do some sort of tracing on the CTDB
- * process.  This might block for a little while.  The external
- * program is specified by the environment variable
- * CTDB_EXTERNAL_TRACE.  This program should take one argument: the
- * pid of the process to trace.  Commonly, the program would be a
- * wrapper script around gcore.
- */
-void ctdb_external_trace(void)
-{
-	int ret;
-	static char external_trace[PATH_MAX+1] = "";
-	char * cmd;
-
-	if (!ctdb_set_helper("external trace handler",
-			     external_trace, sizeof(external_trace),
-			     "CTDB_EXTERNAL_TRACE", NULL, NULL)) {
-		return;
-	}
-
-	cmd = talloc_asprintf(NULL, "%s %lu", external_trace, (unsigned long) getpid());
-	DEBUG(DEBUG_WARNING,("begin external trace: %s\n", cmd));
-	ret = system(cmd);
-	if (ret == -1) {
-		DEBUG(DEBUG_ERR,
-		      ("external trace command \"%s\" failed\n", cmd));
-	}
-	DEBUG(DEBUG_WARNING,("end external trace: %s\n", cmd));
-	talloc_free(cmd);
-}
-
 /*
   parse a IP:port pair
 */
@@ -389,8 +359,8 @@ void ctdb_canonicalize_ip(const ctdb_sock_addr *ip, ctdb_sock_addr *cip)
 			       sizeof(cip->ip.sin_addr));
 		} else {
 			cip->ip6.sin6_family = AF_INET6;
-#ifdef HAVE_SOCK_SIN_LEN
-			cip->ip6.sin_len = sizeof(ctdb_sock_addr);
+#ifdef HAVE_SOCK_SIN6_LEN
+			cip->ip6.sin6_len = sizeof(ctdb_sock_addr);
 #endif
 			cip->ip6.sin6_port   = ip->ip6.sin6_port;
 			memcpy(&cip->ip6.sin6_addr,
@@ -462,7 +432,6 @@ char *ctdb_addr_to_str(ctdb_sock_addr *addr)
 		break;
 	default:
 		DEBUG(DEBUG_ERR, (__location__ " ERROR, unknown family %u\n", addr->sa.sa_family));
-		ctdb_external_trace();
 	}
 
 	return cip;

@@ -1,0 +1,48 @@
+From ad4ef1657e9b2a088a3bfadcce196cfcceead1dc Mon Sep 17 00:00:00 2001
+From: Evgeny Sinelnikov <sin@altlinux.org>
+Date: Wed, 31 Jul 2019 23:17:20 +0400
+Subject: [PATCH] s3:ldap: Fix join with don't exists machine account
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add check for requested replies of existing machine object during join
+machine to domain. This solves regression fail during join with error:
+"None of the information to be translated has been translated."
+
+https://bugzilla.samba.org/show_bug.cgi?id=14007
+
+Reviewed-by: Guenther Deschner <gd@samba.org>
+Reviewed-by: Alexander Bokovoy <ab@samba.org>
+Reviewed-by: Stefan Metzmacher <metze@samba.org>
+
+Autobuild-User(master): Günther Deschner <gd@samba.org>
+Autobuild-Date(master): Wed Sep  4 17:02:37 UTC 2019 on sn-devel-184
+---
+ source3/libads/ldap.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/source3/libads/ldap.c b/source3/libads/ldap.c
+index 4f3d43b02b1..2110390b65f 100644
+--- a/source3/libads/ldap.c
++++ b/source3/libads/ldap.c
+@@ -2121,13 +2121,14 @@ ADS_STATUS ads_create_machine_acct(ADS_STRUCT *ads,
+ 	}
+ 
+ 	ret = ads_find_machine_acct(ads, &res, machine_escaped);
+-	ads_msgfree(ads, res);
+-	if (ADS_ERR_OK(ret)) {
++	if (ADS_ERR_OK(ret) && ads_count_replies(ads, res) == 1) {
+ 		DBG_DEBUG("Host account for %s already exists.\n",
+ 				machine_escaped);
+ 		ret = ADS_ERROR_LDAP(LDAP_ALREADY_EXISTS);
++		ads_msgfree(ads, res);
+ 		goto done;
+ 	}
++	ads_msgfree(ads, res);
+ 
+ 	new_dn = talloc_asprintf(ctx, "cn=%s,%s", machine_escaped, org_unit);
+ 	samAccountName = talloc_asprintf(ctx, "%s$", machine_name);
+-- 
+2.21.0
+

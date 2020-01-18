@@ -1,0 +1,402 @@
+From b67bc28be3e0ab40e14f698951c9ba057ea8321d Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Thu, 15 Nov 2018 16:06:49 +0100
+Subject: [PATCH 1/4] selftest: Add gooduser and eviluser to Samba3
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13699
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Böhme <slow@samba.org>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+(cherry picked from commit 3b38dddff2c1d1b51aed96368b358f349682bea0)
+---
+ selftest/target/Samba3.pm | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/selftest/target/Samba3.pm b/selftest/target/Samba3.pm
+index 438cb3409bb..373f8152ca3 100755
+--- a/selftest/target/Samba3.pm
++++ b/selftest/target/Samba3.pm
+@@ -1610,8 +1610,10 @@ sub provision($$$$$$$$$)
+	my ($gid_force_user);
+	my ($uid_user1);
+	my ($uid_user2);
++	my ($uid_gooduser);
++	my ($uid_eviluser);
+
+-	if ($unix_uid < 0xffff - 10) {
++	if ($unix_uid < 0xffff - 12) {
+		$max_uid = 0xffff;
+	} else {
+		$max_uid = $unix_uid;
+@@ -1627,6 +1629,8 @@ sub provision($$$$$$$$$)
+	$uid_smbget = $max_uid - 8;
+	$uid_user1 = $max_uid - 9;
+	$uid_user2 = $max_uid - 10;
++	$uid_gooduser = $max_uid - 11;
++	$uid_eviluser = $max_uid - 12;
+
+	if ($unix_gids[0] < 0xffff - 8) {
+		$max_gid = 0xffff;
+@@ -2248,6 +2252,8 @@ force_user:x:$uid_force_user:$gid_force_user:force user gecos:$prefix_abs:/bin/f
+ smbget_user:x:$uid_smbget:$gid_domusers:smbget_user gecos:$prefix_abs:/bin/false
+ user1:x:$uid_user1:$gid_nogroup:user1 gecos:$prefix_abs:/bin/false
+ user2:x:$uid_user2:$gid_nogroup:user2 gecos:$prefix_abs:/bin/false
++gooduser:x:$uid_gooduser:$gid_domusers:gooduser gecos:$prefix_abs:/bin/false
++eviluser:x:$uid_eviluser:$gid_domusers:eviluser gecos::/bin/false
+ ";
+	if ($unix_uid != 0) {
+		print PASSWD "root:x:$uid_root:$gid_root:root gecos:$prefix_abs:/bin/false
+@@ -2324,6 +2330,8 @@ force_user:x:$gid_force_user:
+	createuser($self, "smbget_user", $password, $conffile, \%createuser_env) || die("Unable to create smbget_user");
+	createuser($self, "user1", $password, $conffile, \%createuser_env) || die("Unable to create user1");
+	createuser($self, "user2", $password, $conffile, \%createuser_env) || die("Unable to create user2");
++	createuser($self, "gooduser", $password, $conffile, \%createuser_env) || die("Unable to create gooduser");
++	createuser($self, "eviluser", $password, $conffile, \%createuser_env) || die("Unable to create eviluser");
+
+	open(DNS_UPDATE_LIST, ">$prefix/dns_update_list") or die("Unable to open $$prefix/dns_update_list");
+	print DNS_UPDATE_LIST "A $server. $server_ip\n";
+--
+2.19.2
+
+
+From ca57b6e4f02c725a3f47b8dde01d4b70dce42784 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 16 Nov 2018 15:40:59 +0100
+Subject: [PATCH 2/4] s3:tests: Test for users connecting to their 'homes'
+ share
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This adds a test for CVE-2009-2813.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13699
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Böhme <slow@samba.org>
+(cherry picked from commit cc471448df91c43fe38e2fcdf9b3874636ca51a6)
+---
+ selftest/target/Samba3.pm          |  4 ++
+ source3/script/tests/test_homes.sh | 99 ++++++++++++++++++++++++++++++
+ source3/selftest/tests.py          |  1 +
+ 3 files changed, 104 insertions(+)
+ create mode 100755 source3/script/tests/test_homes.sh
+
+diff --git a/selftest/target/Samba3.pm b/selftest/target/Samba3.pm
+index 373f8152ca3..2031003210c 100755
+--- a/selftest/target/Samba3.pm
++++ b/selftest/target/Samba3.pm
+@@ -921,6 +921,10 @@ sub setup_fileserver
+	comment = inherit only unix owner
+	inherit owner = unix only
+	acl_xattr:ignore system acls = yes
++[homes]
++	comment = Home directories
++	browseable = No
++	read only = No
+ ";
+
+	my $vars = $self->provision($path, "WORKGROUP",
+diff --git a/source3/script/tests/test_homes.sh b/source3/script/tests/test_homes.sh
+new file mode 100755
+index 00000000000..06de0a0c301
+--- /dev/null
++++ b/source3/script/tests/test_homes.sh
+@@ -0,0 +1,99 @@
++#!/bin/sh
++
++# Copyright (c) Andreas Schneider <asn@samba.org>
++# License: GPLv3
++
++if [ $# -lt 7 ]; then
++	echo "Usage: test_homes.sh SERVER USERNAME PASSWORD LOCAL_PATH PREFIX SMBCLIENT CONFIGURATION"
++	exit 1
++fi
++
++SERVER="${1}"
++USERNAME="${2}"
++PASSWORD="${3}"
++LOCAL_PATH="${4}"
++PREFIX="${5}"
++SMBCLIENT="${6}"
++CONFIGURATION="${7}"
++shift 7
++
++incdir=`dirname $0`/../../../testprogs/blackbox
++. $incdir/subunit.sh
++
++failed=0
++
++test_gooduser_home()
++{
++    tmpfile=$PREFIX/smbclient_homes_gooduser_commands
++    cat > $tmpfile <<EOF
++ls
++quit
++EOF
++
++    USERNAME=gooduser
++
++    cmd='CLI_FORCE_INTERACTIVE=yes $SMBCLIENT "$@" -U$USERNAME%$PASSWORD //$SERVER/$USERNAME $CONFIGURATION < $tmpfile 2>&1'
++    eval echo "$cmd"
++    out=$(eval $cmd)
++    ret=$?
++    rm -f $tmpfile
++
++    if [ $ret -ne 0 ] ; then
++       echo "$out"
++       echo "failed to connect error $ret"
++       return 1
++    fi
++
++    echo "$out" | grep 'Try "help" to get a list of possible commands.'
++    ret=$?
++    if [ $ret -ne 0 ] ; then
++       echo "$out"
++       echo 'failed - should get: Try "help" to get a list of possible commands.'
++       return 1
++    fi
++
++    return 0
++}
++
++test_eviluser_home()
++{
++    tmpfile=$PREFIX/smbclient_homes_eviluser_commands
++    cat > $tmpfile <<EOF
++ls
++quit
++EOF
++
++    USERNAME=eviluser
++
++    cmd='CLI_FORCE_INTERACTIVE=yes $SMBCLIENT "$@" -U$USERNAME%$PASSWORD //$SERVER/$USERNAME $CONFIGURATION < $tmpfile 2>&1'
++    eval echo "$cmd"
++    out=$(eval $cmd)
++    ret=$?
++    rm -f $tmpfile
++
++    if [ $ret -ne 1 ] ; then
++       echo "$out"
++       echo "The server should reject connecting ret=$ret"
++       return 1
++    fi
++
++    echo "$out" | grep 'NT_STATUS_BAD_NETWORK_NAME'
++    ret=$?
++    if [ $ret -ne 0 ] ; then
++       echo "$out"
++       echo 'failed - should get: NT_STATUS_BAD_NETWORK_NAME.'
++       return 1
++    fi
++
++    return 0
++}
++
++testit "test gooduser home" \
++    test_gooduser_home || \
++    failed=`expr $failed + 1`
++
++testit "test eviluser home reject" \
++    test_eviluser_home || \
++    failed=`expr $failed + 1`
++
++testok $0 $failed
+diff --git a/source3/selftest/tests.py b/source3/selftest/tests.py
+index 09cd5159a0d..4aef7a4d596 100755
+--- a/source3/selftest/tests.py
++++ b/source3/selftest/tests.py
+@@ -290,6 +290,7 @@ for env in ["fileserver"]:
+     plantestsuite("samba3.blackbox.large_acl.NT1", env, [os.path.join(samba3srcdir, "script/tests/test_large_acl.sh"), '$SERVER', '$USERNAME', '$PASSWORD', smbclient3, smbcacls, '-m', 'NT1'])
+     plantestsuite("samba3.blackbox.large_acl.SMB3", env, [os.path.join(samba3srcdir, "script/tests/test_large_acl.sh"), '$SERVER', '$USERNAME', '$PASSWORD', smbclient3, smbcacls, '-m', 'SMB3'])
+     plantestsuite("samba3.blackbox.give_owner", env, [os.path.join(samba3srcdir, "script/tests/test_give_owner.sh"), '$SERVER', '$SERVER_IP', '$USERNAME', '$PASSWORD', '$PREFIX', smbclient3, smbcacls, net, 'tmp'])
++    plantestsuite("samba3.blackbox.homes", env, [os.path.join(samba3srcdir, "script/tests/test_homes.sh"), '$SERVER', '$USERNAME', '$PASSWORD', '$LOCAL_PATH', '$PREFIX', smbclient3, configuration])
+
+     #
+     # tar command tests
+--
+2.19.2
+
+
+From 274e960fde8e680a487fd7f3af57c824f9a5151b Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Thu, 22 Nov 2018 18:23:24 +0100
+Subject: [PATCH 3/4] s3:smbd: Make sure we do not export "/" (root) as home
+ dir
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+If "/" (root) is returned as the home directory, prevent exporting it.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13699
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Böhme <slow@samba.org>
+(cherry picked from commit 99695528f7453023446956d5f8f0656574e243af)
+---
+ source3/param/service.c | 6 +++++-
+ source3/smbd/password.c | 7 +++++++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/source3/param/service.c b/source3/param/service.c
+index b21be6093d4..22f46f08894 100644
+--- a/source3/param/service.c
++++ b/source3/param/service.c
+@@ -149,7 +149,11 @@ int find_service(TALLOC_CTX *ctx, const char *service_in, char **p_service_out)
+		DEBUG(3,("checking for home directory %s gave %s\n",*p_service_out,
+			phome_dir?phome_dir:"(NULL)"));
+
+-		iService = add_home_service(*p_service_out,*p_service_out /* 'username' */, phome_dir);
++		if (!strequal(phome_dir, "/")) {
++			iService = add_home_service(*p_service_out,
++						    *p_service_out, /* username */
++						    phome_dir);
++		}
+	}
+
+	/* If we still don't have a service, attempt to add it as a printer. */
+diff --git a/source3/smbd/password.c b/source3/smbd/password.c
+index f472bda2c70..0576d2563eb 100644
+--- a/source3/smbd/password.c
++++ b/source3/smbd/password.c
+@@ -129,6 +129,13 @@ int register_homes_share(const char *username)
+		return -1;
+	}
+
++	if (strequal(pwd->pw_dir, "/")) {
++		DBG_NOTICE("Invalid home directory defined for user '%s'\n",
++			   username);
++		TALLOC_FREE(pwd);
++		return -1;
++	}
++
+	DEBUG(3, ("Adding homes service for user '%s' using home directory: "
+		  "'%s'\n", username, pwd->pw_dir));
+
+--
+2.19.2
+
+
+From e26c6aa97e57432d2f2fee2eba870ba76c9b8d41 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 3 Dec 2018 11:05:46 +0100
+Subject: [PATCH 4/4] s3:tests: Add test for checking that root is not allowed
+ as home dir
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13699
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Böhme <slow@samba.org>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+
+Autobuild-User(master): Jeremy Allison <jra@samba.org>
+Autobuild-Date(master): Wed Dec  5 05:22:43 CET 2018 on sn-devel-144
+
+(cherry picked from commit a92f0ccce606be12e851a4100fbb44b069c5fe87)
+---
+ selftest/target/Samba3.pm          |  6 ++++-
+ source3/script/tests/test_homes.sh | 37 ++++++++++++++++++++++++++++++
+ 2 files changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/selftest/target/Samba3.pm b/selftest/target/Samba3.pm
+index 2031003210c..583396b3818 100755
+--- a/selftest/target/Samba3.pm
++++ b/selftest/target/Samba3.pm
+@@ -1616,8 +1616,9 @@ sub provision($$$$$$$$$)
+	my ($uid_user2);
+	my ($uid_gooduser);
+	my ($uid_eviluser);
++	my ($uid_slashuser);
+
+-	if ($unix_uid < 0xffff - 12) {
++	if ($unix_uid < 0xffff - 13) {
+		$max_uid = 0xffff;
+	} else {
+		$max_uid = $unix_uid;
+@@ -1635,6 +1636,7 @@ sub provision($$$$$$$$$)
+	$uid_user2 = $max_uid - 10;
+	$uid_gooduser = $max_uid - 11;
+	$uid_eviluser = $max_uid - 12;
++	$uid_slashuser = $max_uid - 13;
+
+	if ($unix_gids[0] < 0xffff - 8) {
+		$max_gid = 0xffff;
+@@ -2258,6 +2260,7 @@ user1:x:$uid_user1:$gid_nogroup:user1 gecos:$prefix_abs:/bin/false
+ user2:x:$uid_user2:$gid_nogroup:user2 gecos:$prefix_abs:/bin/false
+ gooduser:x:$uid_gooduser:$gid_domusers:gooduser gecos:$prefix_abs:/bin/false
+ eviluser:x:$uid_eviluser:$gid_domusers:eviluser gecos::/bin/false
++slashuser:x:$uid_slashuser:$gid_domusers:slashuser gecos:/:/bin/false
+ ";
+	if ($unix_uid != 0) {
+		print PASSWD "root:x:$uid_root:$gid_root:root gecos:$prefix_abs:/bin/false
+@@ -2336,6 +2339,7 @@ force_user:x:$gid_force_user:
+	createuser($self, "user2", $password, $conffile, \%createuser_env) || die("Unable to create user2");
+	createuser($self, "gooduser", $password, $conffile, \%createuser_env) || die("Unable to create gooduser");
+	createuser($self, "eviluser", $password, $conffile, \%createuser_env) || die("Unable to create eviluser");
++	createuser($self, "slashuser", $password, $conffile, \%createuser_env) || die("Unable to create slashuser");
+
+	open(DNS_UPDATE_LIST, ">$prefix/dns_update_list") or die("Unable to open $$prefix/dns_update_list");
+	print DNS_UPDATE_LIST "A $server. $server_ip\n";
+diff --git a/source3/script/tests/test_homes.sh b/source3/script/tests/test_homes.sh
+index 06de0a0c301..90e84550dbc 100755
+--- a/source3/script/tests/test_homes.sh
++++ b/source3/script/tests/test_homes.sh
+@@ -88,6 +88,39 @@ EOF
+     return 0
+ }
+
++test_slashuser_home()
++{
++    tmpfile=$PREFIX/smbclient_homes_slashuser_commands
++    cat > $tmpfile <<EOF
++ls
++quit
++EOF
++
++    USERNAME=slashuser
++
++    cmd='CLI_FORCE_INTERACTIVE=yes $SMBCLIENT "$@" -U$USERNAME%$PASSWORD //$SERVER/$USERNAME $CONFIGURATION < $tmpfile 2>&1'
++    eval echo "$cmd"
++    out=$(eval $cmd)
++    ret=$?
++    rm -f $tmpfile
++
++    if [ $ret -ne 1 ] ; then
++       echo "$out"
++       echo "The server should reject connecting ret=$ret"
++       return 1
++    fi
++
++    echo "$out" | grep 'NT_STATUS_BAD_NETWORK_NAME'
++    ret=$?
++    if [ $ret -ne 0 ] ; then
++       echo "$out"
++       echo 'failed - should get: NT_STATUS_BAD_NETWORK_NAME.'
++       return 1
++    fi
++
++    return 0
++}
++
+ testit "test gooduser home" \
+     test_gooduser_home || \
+     failed=`expr $failed + 1`
+@@ -96,4 +129,8 @@ testit "test eviluser home reject" \
+     test_eviluser_home || \
+     failed=`expr $failed + 1`
+
++testit "test slashuser home reject" \
++    test_slashuser_home || \
++    failed=`expr $failed + 1`
++
+ testok $0 $failed
+--
+2.19.2

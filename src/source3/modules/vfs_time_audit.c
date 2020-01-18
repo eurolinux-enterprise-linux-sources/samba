@@ -300,7 +300,7 @@ static NTSTATUS smb_time_audit_get_dfs_referrals(
 	timediff = nsec_time_diff(&ts2,&ts1)*1.0e-9;
 
 	if (timediff > audit_timeout) {
-		smb_time_audit_log("get_dfs_referrals(", timediff);
+		smb_time_audit_log("get_dfs_referrals", timediff);
 	}
 
 	return result;
@@ -648,25 +648,6 @@ static int smb_time_audit_close(vfs_handle_struct *handle, files_struct *fsp)
 	return result;
 }
 
-static ssize_t smb_time_audit_read(vfs_handle_struct *handle,
-				   files_struct *fsp, void *data, size_t n)
-{
-	ssize_t result;
-	struct timespec ts1,ts2;
-	double timediff;
-
-	clock_gettime_mono(&ts1);
-	result = SMB_VFS_NEXT_READ(handle, fsp, data, n);
-	clock_gettime_mono(&ts2);
-	timediff = nsec_time_diff(&ts2,&ts1)*1.0e-9;
-
-	if (timediff > audit_timeout) {
-		smb_time_audit_log_fsp("read", timediff, fsp);
-	}
-
-	return result;
-}
-
 static ssize_t smb_time_audit_pread(vfs_handle_struct *handle,
 				    files_struct *fsp,
 				    void *data, size_t n, off_t offset)
@@ -749,26 +730,6 @@ static ssize_t smb_time_audit_pread_recv(struct tevent_req *req,
 	}
 	*vfs_aio_state = state->vfs_aio_state;
 	return state->ret;
-}
-
-static ssize_t smb_time_audit_write(vfs_handle_struct *handle,
-				    files_struct *fsp,
-				    const void *data, size_t n)
-{
-	ssize_t result;
-	struct timespec ts1,ts2;
-	double timediff;
-
-	clock_gettime_mono(&ts1);
-	result = SMB_VFS_NEXT_WRITE(handle, fsp, data, n);
-	clock_gettime_mono(&ts2);
-	timediff = nsec_time_diff(&ts2,&ts1)*1.0e-9;
-
-	if (timediff > audit_timeout) {
-		smb_time_audit_log_fsp("write", timediff, fsp);
-	}
-
-	return result;
 }
 
 static ssize_t smb_time_audit_pwrite(vfs_handle_struct *handle,
@@ -933,24 +894,6 @@ static int smb_time_audit_rename(vfs_handle_struct *handle,
 
 	if (timediff > audit_timeout) {
 		smb_time_audit_log_smb_fname("rename", timediff, newname);
-	}
-
-	return result;
-}
-
-static int smb_time_audit_fsync(vfs_handle_struct *handle, files_struct *fsp)
-{
-	int result;
-	struct timespec ts1,ts2;
-	double timediff;
-
-	clock_gettime_mono(&ts1);
-	result = SMB_VFS_NEXT_FSYNC(handle, fsp);
-	clock_gettime_mono(&ts2);
-	timediff = nsec_time_diff(&ts2,&ts1)*1.0e-9;
-
-	if (timediff > audit_timeout) {
-		smb_time_audit_log_fsp("fsync", timediff, fsp);
 	}
 
 	return result;
@@ -1930,13 +1873,12 @@ static NTSTATUS smb_time_audit_offload_read_recv(
 	struct tevent_req *req,
 	struct vfs_handle_struct *handle,
 	TALLOC_CTX *mem_ctx,
-	DATA_BLOB *_token_blob)
+	DATA_BLOB *token_blob)
 {
 	struct time_audit_offload_read_state *state = tevent_req_data(
 		req, struct time_audit_offload_read_state);
 	struct timespec ts_recv;
 	double timediff;
-	DATA_BLOB token_blob;
 	NTSTATUS status;
 
 	clock_gettime_mono(&ts_recv);
@@ -1950,13 +1892,8 @@ static NTSTATUS smb_time_audit_offload_read_recv(
 		return status;
 	}
 
-	token_blob = data_blob_talloc(mem_ctx,
-				      state->token_blob.data,
-				      state->token_blob.length);
-	if (token_blob.data == NULL) {
-		tevent_req_received(req);
-		return NT_STATUS_NO_MEMORY;
-	}
+	token_blob->length = state->token_blob.length;
+	token_blob->data = talloc_move(mem_ctx, &state->token_blob.data);
 
 	tevent_req_received(req);
 	return NT_STATUS_OK;
@@ -2211,49 +2148,6 @@ static NTSTATUS smb_time_audit_audit_file(struct vfs_handle_struct *handle,
 		smb_time_audit_log_fname("audit_file",
 			timediff,
 			smb_fname->base_name);
-	}
-
-	return result;
-}
-
-
-
-static int smb_time_audit_chmod_acl(vfs_handle_struct *handle,
-			const struct smb_filename *smb_fname,
-			mode_t mode)
-{
-	int result;
-	struct timespec ts1,ts2;
-	double timediff;
-
-	clock_gettime_mono(&ts1);
-	result = SMB_VFS_NEXT_CHMOD_ACL(handle, smb_fname, mode);
-	clock_gettime_mono(&ts2);
-	timediff = nsec_time_diff(&ts2,&ts1)*1.0e-9;
-
-	if (timediff > audit_timeout) {
-		smb_time_audit_log_fname("chmod_acl",
-			timediff,
-			smb_fname->base_name);
-	}
-
-	return result;
-}
-
-static int smb_time_audit_fchmod_acl(vfs_handle_struct *handle,
-				     files_struct *fsp, mode_t mode)
-{
-	int result;
-	struct timespec ts1,ts2;
-	double timediff;
-
-	clock_gettime_mono(&ts1);
-	result = SMB_VFS_NEXT_FCHMOD_ACL(handle, fsp, mode);
-	clock_gettime_mono(&ts2);
-	timediff = nsec_time_diff(&ts2,&ts1)*1.0e-9;
-
-	if (timediff > audit_timeout) {
-		smb_time_audit_log_fsp("fchmod_acl", timediff, fsp);
 	}
 
 	return result;
@@ -2695,11 +2589,9 @@ static struct vfs_fn_pointers vfs_time_audit_fns = {
 	.open_fn = smb_time_audit_open,
 	.create_file_fn = smb_time_audit_create_file,
 	.close_fn = smb_time_audit_close,
-	.read_fn = smb_time_audit_read,
 	.pread_fn = smb_time_audit_pread,
 	.pread_send_fn = smb_time_audit_pread_send,
 	.pread_recv_fn = smb_time_audit_pread_recv,
-	.write_fn = smb_time_audit_write,
 	.pwrite_fn = smb_time_audit_pwrite,
 	.pwrite_send_fn = smb_time_audit_pwrite_send,
 	.pwrite_recv_fn = smb_time_audit_pwrite_recv,
@@ -2707,7 +2599,6 @@ static struct vfs_fn_pointers vfs_time_audit_fns = {
 	.sendfile_fn = smb_time_audit_sendfile,
 	.recvfile_fn = smb_time_audit_recvfile,
 	.rename_fn = smb_time_audit_rename,
-	.fsync_fn = smb_time_audit_fsync,
 	.fsync_send_fn = smb_time_audit_fsync_send,
 	.fsync_recv_fn = smb_time_audit_fsync_recv,
 	.stat_fn = smb_time_audit_stat,
@@ -2762,8 +2653,6 @@ static struct vfs_fn_pointers vfs_time_audit_fns = {
 	.get_nt_acl_fn = smb_time_audit_get_nt_acl,
 	.fset_nt_acl_fn = smb_time_audit_fset_nt_acl,
 	.audit_file_fn = smb_time_audit_audit_file,
-	.chmod_acl_fn = smb_time_audit_chmod_acl,
-	.fchmod_acl_fn = smb_time_audit_fchmod_acl,
 	.sys_acl_get_file_fn = smb_time_audit_sys_acl_get_file,
 	.sys_acl_get_fd_fn = smb_time_audit_sys_acl_get_fd,
 	.sys_acl_blob_get_file_fn = smb_time_audit_sys_acl_blob_get_file,

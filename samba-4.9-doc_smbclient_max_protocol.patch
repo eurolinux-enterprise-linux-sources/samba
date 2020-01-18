@@ -1,0 +1,37 @@
+From fac7c0a0357fc0c9fc472a0ee022a8db7571f054 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 22 Mar 2019 14:39:11 +0100
+Subject: [PATCH] docs: Update smbclient manpage for --max-protocol
+
+We default to SMB3 now.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13857
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Alexander Bokovoy <ab@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 63084375e3c536f22f65e7b7796d114fa8c804c9)
+---
+ docs-xml/manpages/smbclient.1.xml | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/docs-xml/manpages/smbclient.1.xml b/docs-xml/manpages/smbclient.1.xml
+index e71a21a95e3..e25f7d3517b 100644
+--- a/docs-xml/manpages/smbclient.1.xml
++++ b/docs-xml/manpages/smbclient.1.xml
+@@ -261,9 +261,9 @@
+ 		<listitem><para>This allows the user to select the
+ 		highest SMB protocol level that smbclient will use to
+ 		connect to the server. By default this is set to
+-		NT1, which is the highest available SMB1 protocol.
+-		To connect using SMB2 or SMB3 protocol, use the
+-		strings SMB2 or SMB3 respectively. Note that to connect
++		highest available SMB3 protocol version.
++		To connect using SMB2 or SMB1 protocol, use the
++		strings SMB2 or NT1 respectively. Note that to connect
+ 		to a Windows 2012 server with encrypted transport selecting
+ 		a max-protocol of SMB3 is required.
+ 		</para></listitem>
+-- 
+2.21.0
+

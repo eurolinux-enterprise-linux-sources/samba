@@ -303,7 +303,6 @@ struct ctdb_context {
 	bool do_setsched;
 	const char *event_script_dir;
 	const char *notification_script;
-	const char *default_public_interface;
 	pid_t ctdbd_pid;
 	pid_t recoverd_pid;
 	enum ctdb_runstate runstate;
@@ -726,9 +725,12 @@ int ctdb_set_db_readonly(struct ctdb_context *ctdb,
 
 int ctdb_process_deferred_attach(struct ctdb_context *ctdb);
 
-int32_t ctdb_control_db_attach(struct ctdb_context *ctdb, TDB_DATA indata,
+int32_t ctdb_control_db_attach(struct ctdb_context *ctdb,
+			       TDB_DATA indata,
 			       TDB_DATA *outdata,
-			       uint8_t db_flags, uint32_t client_id,
+			       uint8_t db_flags,
+			       uint32_t srcnode,
+			       uint32_t client_id,
 			       struct ctdb_req_control_old *c,
 			       bool *async_reply);
 int32_t ctdb_control_db_detach(struct ctdb_context *ctdb, TDB_DATA indata,
@@ -750,7 +752,6 @@ int32_t ctdb_control_get_db_statistics(struct ctdb_context *ctdb,
 
 /* from ctdb_monitor.c */
 
-int ctdb_set_notification_script(struct ctdb_context *ctdb, const char *script);
 void ctdb_run_notification_script(struct ctdb_context *ctdb, const char *event);
 
 void ctdb_stop_monitoring(struct ctdb_context *ctdb);

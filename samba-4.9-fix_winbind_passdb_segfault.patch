@@ -1,0 +1,39 @@
+From 38e6908f259b2bdbdba38a856b9d67585453af9a Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 29 Oct 2018 19:45:58 +0100
+Subject: [PATCH] s3:winbind: Check return code of initialize_password_db()
+
+See https://retrace.fedoraproject.org/faf/reports/1577174/
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13668
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Jeremy Allison <jra@samba.org>
+
+(cherry picked from commit ba17cae4cab686b8d018c39d16706e621f9f93ac)
+---
+ source3/winbindd/winbindd.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/source3/winbindd/winbindd.c b/source3/winbindd/winbindd.c
+index 254d93b344d..a8ffc31778c 100644
+--- a/source3/winbindd/winbindd.c
++++ b/source3/winbindd/winbindd.c
+@@ -1845,7 +1845,13 @@ int main(int argc, const char **argv)
+ 	if (!NT_STATUS_IS_OK(status)) {
+ 		exit_daemon("Winbindd reinit_after_fork() failed", map_errno_from_nt_status(status));
+ 	}
+-	initialize_password_db(true, server_event_context());
++
++	ok = initialize_password_db(true, server_event_context());
++	if (!ok) {
++		exit_daemon("Failed to initialize passdb backend! "
++			    "Check the 'passdb backend' variable in your "
++			    "smb.conf file.", EINVAL);
++	}
+ 
+ 	/*
+ 	 * Do not initialize the parent-child-pipe before becoming
+-- 
+2.19.1
+

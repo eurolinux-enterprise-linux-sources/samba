@@ -1,0 +1,119 @@
+From 1038892f651cbc1a924cd7e74b393eb356dd5266 Mon Sep 17 00:00:00 2001
+From: Justin Stephenson <jstephen@redhat.com>
+Date: Wed, 27 Jun 2018 11:32:31 -0400
+Subject: [PATCH] s3:libads: Add net ads leave keep-account option
+
+Add the ability to leave the domain with --keep-account argument to avoid
+removal of the host machine account.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13498
+
+Signed-off-by: Justin Stephenson <jstephen@redhat.com>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+Reviewed-by: Alexander Bokovoy <ab@samba.org>
+(cherry picked from commit d881f0c8a0ce2fc7cabf1966c5724e72c70d6694)
+---
+ docs-xml/manpages/net.8.xml  | 9 ++++++++-
+ source3/libnet/libnet_join.c | 2 ++
+ source3/utils/net.c          | 3 ++-
+ source3/utils/net.h          | 1 +
+ source3/utils/net_ads.c      | 9 +++++++--
+ 5 files changed, 20 insertions(+), 4 deletions(-)
+
+diff --git a/docs-xml/manpages/net.8.xml b/docs-xml/manpages/net.8.xml
+index 3154ee5ff85..d2bcd24c502 100644
+--- a/docs-xml/manpages/net.8.xml
++++ b/docs-xml/manpages/net.8.xml
+@@ -377,6 +377,13 @@
+ 		</para></listitem>
+ 		</varlistentry>
+ 
++		<varlistentry>
++		<term>--keep-account</term>
++		<listitem><para>Prevent the machine account removal as
++		part of "net ads leave".
++		</para></listitem>
++		</varlistentry>
++
+ 		&stdarg.encrypt;
+ 		&popt.common.samba.client;
+ 
+@@ -1276,7 +1283,7 @@ against an NT4 Domain Controller.
+ </refsect2>
+ 
+ <refsect2>
+-<title>ADS LEAVE</title>
++<title>ADS LEAVE [--keep-account]</title>
+ 
+ <para>Make the remote host leave the domain it is part of. </para>
+ 
+diff --git a/source3/libnet/libnet_join.c b/source3/libnet/libnet_join.c
+index a9405e8d288..27fc5135442 100644
+--- a/source3/libnet/libnet_join.c
++++ b/source3/libnet/libnet_join.c
+@@ -2868,6 +2868,8 @@ static WERROR libnet_DomainUnjoin(TALLOC_CTX *mem_ctx,
+ 			return ntstatus_to_werror(status);
+ 		}
+ 
++		r->out.dns_domain_name = talloc_strdup(mem_ctx,
++				                      r->in.domain_name);
+ 		r->out.disabled_machine_account = true;
+ 	}
+ 
+diff --git a/source3/utils/net.c b/source3/utils/net.c
+index 759d8cd442b..b3bd4b67118 100644
+--- a/source3/utils/net.c
++++ b/source3/utils/net.c
+@@ -970,8 +970,9 @@ static struct functable net_func[] = {
+ 		{"wipe", 0, POPT_ARG_NONE, &c->opt_wipe},
+ 		/* Options for 'net registry import' */
+ 		{"precheck", 0, POPT_ARG_STRING, &c->opt_precheck},
+-		/* Options for 'net ads join' */
++		/* Options for 'net ads join or leave' */
+ 		{"no-dns-updates", 0, POPT_ARG_NONE, &c->opt_no_dns_updates},
++		{"keep-account", 0, POPT_ARG_NONE, &c->opt_keep_account},
+ 		POPT_COMMON_SAMBA
+ 		{ 0, 0, 0, 0}
+ 	};
+diff --git a/source3/utils/net.h b/source3/utils/net.h
+index d6dfeb6208f..5e70fd3aafa 100644
+--- a/source3/utils/net.h
++++ b/source3/utils/net.h
+@@ -85,6 +85,7 @@ struct net_context {
+ 	int opt_wipe;
+ 	const char *opt_precheck;
+ 	int opt_no_dns_updates;
++	int opt_keep_account;
+ 
+ 	int opt_have_ip;
+ 	struct sockaddr_storage opt_dest_ip;
+diff --git a/source3/utils/net_ads.c b/source3/utils/net_ads.c
+index ffa67d8f525..afe47dad839 100644
+--- a/source3/utils/net_ads.c
++++ b/source3/utils/net_ads.c
+@@ -964,7 +964,7 @@ static int net_ads_leave(struct net_context *c, int argc, const char **argv)
+ 
+ 	if (c->display_usage) {
+ 		d_printf(  "%s\n"
+-			   "net ads leave\n"
++			   "net ads leave [--keep-account]\n"
+ 			   "    %s\n",
+ 			 _("Usage:"),
+ 			 _("Leave an AD domain"));
+@@ -1009,7 +1009,12 @@ static int net_ads_leave(struct net_context *c, int argc, const char **argv)
+ 	   WKSSVC_JOIN_FLAGS_ACCOUNT_DELETE really means "disable */
+ 	r->in.unjoin_flags	= WKSSVC_JOIN_FLAGS_JOIN_TYPE |
+ 				  WKSSVC_JOIN_FLAGS_ACCOUNT_DELETE;
+-	r->in.delete_machine_account = true;
++	if (c->opt_keep_account) {
++		r->in.delete_machine_account = false;
++	} else {
++		r->in.delete_machine_account = true;
++	}
++
+ 	r->in.msg_ctx		= c->msg_ctx;
+ 
+ 	werr = libnet_Unjoin(ctx, r);
+-- 
+2.17.1
+

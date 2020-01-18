@@ -1,0 +1,544 @@
+From 996850e7c3bae8fa2f3fcb3f2e3a811c1e6c162f Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 29 Mar 2019 11:34:53 +0100
+Subject: [PATCH 01/11] s3:libads: Print more information when LDAP fails
+
+Currently we just get an error but don't know what exactly we tried to
+do in 'net ads join -d10'.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit 40669e3739eb5cde135c371e2c8134d3f11a16a5)
+---
+ source3/libads/ldap.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/source3/libads/ldap.c b/source3/libads/ldap.c
+index 13846695bd4..110f74a2dbb 100644
+--- a/source3/libads/ldap.c
++++ b/source3/libads/ldap.c
+@@ -1521,8 +1521,10 @@ static void ads_print_error(int ret, LDAP *ld)
+ 	if (ret != 0) {
+ 		char *ld_error = NULL;
+ 		ldap_get_option(ld, LDAP_OPT_ERROR_STRING, &ld_error);
+-		DEBUG(10,("AD LDAP failure %d (%s):\n%s\n", ret,
+-			ldap_err2string(ret), ld_error));
++		DBG_ERR("AD LDAP ERROR: %d (%s): %s\n",
++			ret,
++			ldap_err2string(ret),
++			ld_error);
+ 		SAFE_FREE(ld_error);
+ 	}
+ }
+@@ -1549,6 +1551,8 @@ ADS_STATUS ads_gen_mod(ADS_STRUCT *ads, const char *mod_dn, ADS_MODLIST mods)
+ 		(char) 1};
+ 	LDAPControl *controls[2];
+ 
++	DBG_INFO("AD LDAP: Modifying %s\n", mod_dn);
++
+ 	controls[0] = &PermitModify;
+ 	controls[1] = NULL;
+ 
+@@ -1580,6 +1584,8 @@ ADS_STATUS ads_gen_add(ADS_STRUCT *ads, const char *new_dn, ADS_MODLIST mods)
+ 	char *utf8_dn = NULL;
+ 	size_t converted_size;
+ 
++	DBG_INFO("AD LDAP: Adding %s\n", new_dn);
++
+ 	if (!push_utf8_talloc(talloc_tos(), &utf8_dn, new_dn, &converted_size)) {
+ 		DEBUG(1, ("ads_gen_add: push_utf8_talloc failed!"));
+ 		return ADS_ERROR_NT(NT_STATUS_NO_MEMORY);
+@@ -1612,6 +1618,8 @@ ADS_STATUS ads_del_dn(ADS_STRUCT *ads, char *del_dn)
+ 		return ADS_ERROR_NT(NT_STATUS_NO_MEMORY);
+ 	}
+ 
++	DBG_INFO("AD LDAP: Deleting %s\n", del_dn);
++
+ 	ret = ldap_delete_s(ads->ldap.ld, utf8_dn);
+ 	ads_print_error(ret, ads->ldap.ld);
+ 	TALLOC_FREE(utf8_dn);
+-- 
+2.21.0
+
+
+From 5fe5419bd6617fb33c7aafce20e1eeb3edd2f35f Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Wed, 27 Mar 2019 16:45:39 +0100
+Subject: [PATCH 02/11] s3:libsmb: Add some useful debug output to cliconnect
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit 011a47f04dabe22095a30d284662d8ca50463ee8)
+---
+ source3/libsmb/cliconnect.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/source3/libsmb/cliconnect.c b/source3/libsmb/cliconnect.c
+index 837299d9220..9a3d3c769f9 100644
+--- a/source3/libsmb/cliconnect.c
++++ b/source3/libsmb/cliconnect.c
+@@ -345,6 +345,8 @@ NTSTATUS cli_session_creds_prepare_krb5(struct cli_state *cli,
+ 		return NT_STATUS_OK;
+ 	}
+ 
++	DBG_INFO("Doing kinit for %s to access %s\n",
++		 user_principal, target_hostname);
+ 
+ 	/*
+ 	 * TODO: This should be done within the gensec layer
+@@ -374,6 +376,11 @@ NTSTATUS cli_session_creds_prepare_krb5(struct cli_state *cli,
+ 		 */
+ 	}
+ 
++	DBG_DEBUG("Successfully authenticated as %s to access %s using "
++		  "Kerberos\n",
++		  user_principal,
++		  target_hostname);
++
+ 	TALLOC_FREE(frame);
+ 	return NT_STATUS_OK;
+ }
+@@ -1293,6 +1300,10 @@ static struct tevent_req *cli_session_setup_spnego_send(
+ 		return tevent_req_post(req, ev);
+ 	}
+ 
++	DBG_INFO("Connect to %s as %s using SPNEGO\n",
++		 target_hostname,
++		 cli_credentials_get_principal(creds, talloc_tos()));
++
+ 	subreq = cli_session_setup_gensec_send(state, ev, cli, creds,
+ 					       target_service, target_hostname);
+ 	if (tevent_req_nomem(subreq, req)) {
+@@ -1496,6 +1507,8 @@ struct tevent_req *cli_session_setup_creds_send(TALLOC_CTX *mem_ctx,
+ 		return tevent_req_post(req, ev);
+ 	}
+ 
++	DBG_INFO("Connect to %s as %s using NTLM\n", domain, username);
++
+ 	if ((sec_mode & NEGOTIATE_SECURITY_CHALLENGE_RESPONSE) == 0) {
+ 		bool use_unicode = smbXcli_conn_use_unicode(cli->conn);
+ 		uint8_t *bytes = NULL;
+-- 
+2.21.0
+
+
+From 0ad85d0c8d5f1c0a8a2fc9bed2e685e3421195bc Mon Sep 17 00:00:00 2001
+From: Guenther Deschner <gd@samba.org>
+Date: Mon, 1 Apr 2019 17:46:39 +0200
+Subject: [PATCH 03/11] s3:libnet: Fix debug message in libnet_DomainJoin()
+
+A newline is missing but also use DBG_INFO macro and cleanup spelling.
+
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit 3a33c360071bb7cada58f1f71ccd8949fda70662)
+---
+ source3/libnet/libnet_join.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/source3/libnet/libnet_join.c b/source3/libnet/libnet_join.c
+index 27fc5135442..ddc00f7ad7c 100644
+--- a/source3/libnet/libnet_join.c
++++ b/source3/libnet/libnet_join.c
+@@ -2664,8 +2664,8 @@ static WERROR libnet_DomainJoin(TALLOC_CTX *mem_ctx,
+ 			return WERR_NERR_DEFAULTJOINREQUIRED;
+ 		}
+ 
+-		DEBUG(5, ("failed to precreate account in ou %s: %s",
+-			r->in.account_ou, ads_errstr(ads_status)));
++		DBG_INFO("Failed to pre-create account in OU %s: %s\n",
++			 r->in.account_ou, ads_errstr(ads_status));
+ 	}
+  rpc_join:
+ 
+-- 
+2.21.0
+
+
+From d6802828cc9a0dbdd667966faea7cc331479179b Mon Sep 17 00:00:00 2001
+From: Guenther Deschner <gd@samba.org>
+Date: Wed, 27 Mar 2019 17:51:04 +0100
+Subject: [PATCH 04/11] auth:ntlmssp: Add back CRAP ndr debug output
+
+This got lost somehow during refactoring. This is still viable
+information when trying to figure out what is going wrong when
+authenticating a user over NTLMSSP.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit 9e92654899db3c951bee0203415a15737402e7b7)
+---
+ auth/ntlmssp/ntlmssp_client.c | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+diff --git a/auth/ntlmssp/ntlmssp_client.c b/auth/ntlmssp/ntlmssp_client.c
+index ab406a2c5be..8e49dcee5ea 100644
+--- a/auth/ntlmssp/ntlmssp_client.c
++++ b/auth/ntlmssp/ntlmssp_client.c
+@@ -342,6 +342,22 @@ NTSTATUS ntlmssp_client_challenge(struct gensec_security *gensec_security,
+ 		}
+ 	}
+ 
++	if (DEBUGLEVEL >= 10) {
++		struct CHALLENGE_MESSAGE *challenge =
++			talloc(ntlmssp_state, struct CHALLENGE_MESSAGE);
++		if (challenge != NULL) {
++			NTSTATUS status;
++			challenge->NegotiateFlags = chal_flags;
++			status = ntlmssp_pull_CHALLENGE_MESSAGE(
++					&in, challenge, challenge);
++			if (NT_STATUS_IS_OK(status)) {
++				NDR_PRINT_DEBUG(CHALLENGE_MESSAGE,
++						challenge);
++			}
++			TALLOC_FREE(challenge);
++		}
++	}
++
+ 	if (chal_flags & NTLMSSP_TARGET_TYPE_SERVER) {
+ 		ntlmssp_state->server.is_standalone = true;
+ 	} else {
+@@ -702,6 +718,22 @@ NTSTATUS ntlmssp_client_challenge(struct gensec_security *gensec_security,
+ 		return nt_status;
+ 	}
+ 
++	if (DEBUGLEVEL >= 10) {
++		struct AUTHENTICATE_MESSAGE *authenticate =
++			talloc(ntlmssp_state, struct AUTHENTICATE_MESSAGE);
++		if (authenticate != NULL) {
++			NTSTATUS status;
++			authenticate->NegotiateFlags = ntlmssp_state->neg_flags;
++			status = ntlmssp_pull_AUTHENTICATE_MESSAGE(
++				out, authenticate, authenticate);
++			if (NT_STATUS_IS_OK(status)) {
++				NDR_PRINT_DEBUG(AUTHENTICATE_MESSAGE,
++						authenticate);
++			}
++			TALLOC_FREE(authenticate);
++		}
++	}
++
+ 	/*
+ 	 * We always include the MIC, even without:
+ 	 * av_flags->Value.AvFlags |= NTLMSSP_AVFLAG_MIC_IN_AUTHENTICATE_MESSAGE;
+-- 
+2.21.0
+
+
+From 9a4a76ad58a96903129d1aef0c5ac05a9beeda4b Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 1 Apr 2019 15:59:10 +0200
+Subject: [PATCH 05/11] auth:creds: Prefer the principal over DOMAIN/username
+ when using NTLM
+
+If we want to authenticate using -Wadmin@otherdomain the DC should do
+take care of the authentication with the right DC for us.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Pair-Programmed-With: Guenther Deschner <gd@samba.org>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit 5c7f0a6902cfdd698e5f4159d37537bb4c9c1cc3)
+---
+ auth/credentials/credentials.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/auth/credentials/credentials.c b/auth/credentials/credentials.c
+index 4663185c979..7ef58d0752c 100644
+--- a/auth/credentials/credentials.c
++++ b/auth/credentials/credentials.c
+@@ -1115,7 +1115,7 @@ _PUBLIC_ void cli_credentials_get_ntlm_username_domain(struct cli_credentials *c
+ 					      const char **username, 
+ 					      const char **domain) 
+ {
+-	if (cred->principal_obtained > cred->username_obtained) {
++	if (cred->principal_obtained >= cred->username_obtained) {
+ 		*domain = talloc_strdup(mem_ctx, "");
+ 		*username = cli_credentials_get_principal(cred, mem_ctx);
+ 	} else {
+-- 
+2.21.0
+
+
+From 40267b96b2d596bf92139bbc794337fa828e63d5 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 1 Apr 2019 16:39:45 +0200
+Subject: [PATCH 06/11] s3:libnet: Use more secure name for the JOIN krb5.conf
+
+Currently we create krb5.conf..JOIN, use krb5.conf._JOIN_ instead.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit b7f0c64514a28cfb5d2cdee683c18943b97ea753)
+---
+ source3/libnet/libnet_join.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/source3/libnet/libnet_join.c b/source3/libnet/libnet_join.c
+index ddc00f7ad7c..e052306523d 100644
+--- a/source3/libnet/libnet_join.c
++++ b/source3/libnet/libnet_join.c
+@@ -2598,12 +2598,14 @@ static WERROR libnet_DomainJoin(TALLOC_CTX *mem_ctx,
+ 		}
+ 
+ 		/* The domain parameter is only used as modifier
+-		 * to krb5.conf file name. .JOIN is is not a valid
++		 * to krb5.conf file name. _JOIN_ is is not a valid
+ 		 * NetBIOS name so it cannot clash with another domain
+ 		 * -- Uri.
+ 		 */
+-		create_local_private_krb5_conf_for_domain(
+-		    pre_connect_realm, ".JOIN", sitename, &ss);
++		create_local_private_krb5_conf_for_domain(pre_connect_realm,
++							  "_JOIN_",
++							  sitename,
++							  &ss);
+ 	}
+ 
+ 	status = libnet_join_lookup_dc_rpc(mem_ctx, r, &cli);
+-- 
+2.21.0
+
+
+From cdc7199588e89eec42f30d0ea00f406911739763 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 1 Apr 2019 16:47:26 +0200
+Subject: [PATCH 07/11] s3:libads: Make sure we can lookup KDCs which are not
+ configured
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Pair-Programmed-With: Guenther Deschner <gd@samba.org>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit c016afc832543514ebf7ecda1fbe6b272ea533d6)
+---
+ source3/libads/kerberos.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/source3/libads/kerberos.c b/source3/libads/kerberos.c
+index e623f2456a8..360cdd741da 100644
+--- a/source3/libads/kerberos.c
++++ b/source3/libads/kerberos.c
+@@ -673,11 +673,19 @@ bool create_local_private_krb5_conf_for_domain(const char *realm,
+ 	}
+ #endif
+ 
++	/*
++	 * We are setting 'dns_lookup_kdc' to true, because we want to lookup
++	 * KDCs which are not configured via DNS SRV records, eg. if we do:
++	 *
++	 *     net ads join -Uadmin@otherdomain
++	 */
+ 	file_contents =
+ 	    talloc_asprintf(fname,
+-			    "[libdefaults]\n\tdefault_realm = %s\n"
++			    "[libdefaults]\n"
++			    "\tdefault_realm = %s\n"
+ 			    "%s"
+-			    "\tdns_lookup_realm = false\n\n"
++			    "\tdns_lookup_realm = false\n"
++			    "\tdns_lookup_kdc = true\n\n"
+ 			    "[realms]\n\t%s = {\n"
+ 			    "%s\t}\n"
+ 			    "%s\n",
+-- 
+2.21.0
+
+
+From 85d85aa3f79ab0a4c3f3f3aad94d7ed545992a45 Mon Sep 17 00:00:00 2001
+From: Guenther Deschner <gd@samba.org>
+Date: Mon, 1 Apr 2019 17:40:03 +0200
+Subject: [PATCH 08/11] s3:ldap: Leave add machine code early for pre-existing
+ accounts
+
+This avoids numerous LDAP constraint violation errors when we try to
+re-precreate an already existing machine account.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Pair-Programmed-With: Andreas Schneider <asn@samba.org>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit 2044ca0e20bd3180720a82506b3af041d14b5c68)
+---
+ source3/libads/ldap.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/source3/libads/ldap.c b/source3/libads/ldap.c
+index 110f74a2dbb..e191ea792a8 100644
+--- a/source3/libads/ldap.c
++++ b/source3/libads/ldap.c
+@@ -2120,6 +2120,15 @@ ADS_STATUS ads_create_machine_acct(ADS_STRUCT *ads,
+ 		goto done;
+ 	}
+ 
++	ret = ads_find_machine_acct(ads, &res, machine_escaped);
++	ads_msgfree(ads, res);
++	if (ADS_ERR_OK(ret)) {
++		DBG_DEBUG("Host account for %s already exists.\n",
++				machine_escaped);
++		ret = ADS_ERROR_LDAP(LDAP_ALREADY_EXISTS);
++		goto done;
++	}
++
+ 	new_dn = talloc_asprintf(ctx, "cn=%s,%s", machine_escaped, org_unit);
+ 	samAccountName = talloc_asprintf(ctx, "%s$", machine_name);
+ 
+@@ -2155,7 +2164,6 @@ ADS_STATUS ads_create_machine_acct(ADS_STRUCT *ads,
+ 
+ done:
+ 	SAFE_FREE(machine_escaped);
+-	ads_msgfree(ads, res);
+ 	talloc_destroy(ctx);
+ 
+ 	return ret;
+-- 
+2.21.0
+
+
+From ff8c3e197107621f9398515120a33239940a507b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Tue, 2 Apr 2019 13:14:06 +0200
+Subject: [PATCH 09/11] s3-libnet_join: always pass down admin domain to ads
+ layer
+
+Otherwise we could loose the information that a non-default domain name
+has been used for admin creds.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Guenther
+
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+(cherry picked from commit ea29aa27cbac4253ee1701fed99a3e0811f7475d)
+---
+ source3/libnet/libnet_join.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/source3/libnet/libnet_join.c b/source3/libnet/libnet_join.c
+index e052306523d..fc7429e6a23 100644
+--- a/source3/libnet/libnet_join.c
++++ b/source3/libnet/libnet_join.c
+@@ -205,7 +205,19 @@ static ADS_STATUS libnet_join_connect_ads(TALLOC_CTX *mem_ctx,
+ 		password = r->in.machine_password;
+ 		ccname = "MEMORY:libnet_join_machine_creds";
+ 	} else {
++		char *p = NULL;
++
+ 		username = r->in.admin_account;
++
++		p = strchr(r->in.admin_account, '@');
++		if (p == NULL) {
++			username = talloc_asprintf(mem_ctx, "%s@%s",
++						   r->in.admin_account,
++						   r->in.admin_domain);
++		}
++		if (username == NULL) {
++			return ADS_ERROR(LDAP_NO_MEMORY);
++		}
+ 		password = r->in.admin_password;
+ 
+ 		/*
+-- 
+2.21.0
+
+
+From a3939fb583bb21abb34ec4179ffeb65e9a621279 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Tue, 2 Apr 2019 13:16:11 +0200
+Subject: [PATCH 10/11] s3-libnet_join: setup libnet join error string when AD
+ connect fails
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Guenther
+
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+(cherry picked from commit 68121f46c74df9cef7a377040d01ba75cdcf5a26)
+---
+ source3/libnet/libnet_join.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/source3/libnet/libnet_join.c b/source3/libnet/libnet_join.c
+index fc7429e6a23..6d3fc1fe01f 100644
+--- a/source3/libnet/libnet_join.c
++++ b/source3/libnet/libnet_join.c
+@@ -2655,6 +2655,9 @@ static WERROR libnet_DomainJoin(TALLOC_CTX *mem_ctx,
+ 
+ 		ads_status = libnet_join_connect_ads_user(mem_ctx, r);
+ 		if (!ADS_ERR_OK(ads_status)) {
++			libnet_join_set_error_string(mem_ctx, r,
++				"failed to connect to AD: %s",
++				ads_errstr(ads_status));
+ 			return WERR_NERR_DEFAULTJOINREQUIRED;
+ 		}
+ 
+-- 
+2.21.0
+
+
+From d91788b9f257a3e87d9ad460bc4a3e8b8f1d49c3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?G=C3=BCnther=20Deschner?= <gd@samba.org>
+Date: Tue, 2 Apr 2019 13:16:55 +0200
+Subject: [PATCH 11/11] s3-libnet_join: allow fallback to NTLMSSP auth in
+ libnet_join
+
+When a non-DNS and non-default admin domain is provided during the join
+sometimes we might not be able to kinit with 'user@SHORTDOMAINNAME'
+(e.g. when the winbind krb5 locator is not installed). In that case lets
+fallback to NTLMSSP, like we do in winbind.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13861
+
+Guenther
+
+Signed-off-by: Guenther Deschner <gd@samba.org>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+
+Autobuild-User(master): Andreas Schneider <asn@cryptomilk.org>
+Autobuild-Date(master): Wed Apr  3 18:57:31 UTC 2019 on sn-devel-144
+
+(cherry picked from commit 377d27359ccdb8f2680fda36ca388f44456590e5)
+---
+ source3/libnet/libnet_join.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/source3/libnet/libnet_join.c b/source3/libnet/libnet_join.c
+index 6d3fc1fe01f..b876d7ea89f 100644
+--- a/source3/libnet/libnet_join.c
++++ b/source3/libnet/libnet_join.c
+@@ -145,6 +145,8 @@ static ADS_STATUS libnet_connect_ads(const char *dns_domain_name,
+ 		return ADS_ERROR_LDAP(LDAP_NO_MEMORY);
+ 	}
+ 
++	my_ads->auth.flags |= ADS_AUTH_ALLOW_NTLMSSP;
++
+ 	if (user_name) {
+ 		SAFE_FREE(my_ads->auth.user_name);
+ 		my_ads->auth.user_name = SMB_STRDUP(user_name);
+-- 
+2.21.0
+

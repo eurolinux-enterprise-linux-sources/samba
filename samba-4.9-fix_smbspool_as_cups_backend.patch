@@ -1,0 +1,521 @@
+From 7c0a36d527800cd9d148c64b24371c76ac73db63 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Tue, 12 Mar 2019 10:15:05 +0100
+Subject: [PATCH 1/5] s3:script: Fix jobid check in test_smbspool.sh
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13832
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Bryan Mason <bmason@redhat.com>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit fad5e4eaeb9202c1b63c42ea09254c17c473e33a)
+---
+ source3/script/tests/test_smbspool.sh | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/source3/script/tests/test_smbspool.sh b/source3/script/tests/test_smbspool.sh
+index d95ed064634..f28c0909334 100755
+--- a/source3/script/tests/test_smbspool.sh
++++ b/source3/script/tests/test_smbspool.sh
+@@ -99,8 +99,8 @@ test_vlp_verify()
+ 	fi
+ 
+ 	jobid=$(echo "$out" | awk '/[0-9]+/ { print $1 };')
+-	if [ $jobid -lt 1000 || $jobid -gt 2000 ]; then
+-		echo "failed to get jobid"
++	if [ -z "$jobid" ] || [ $jobid -lt 100 || [ $jobid -gt 2000 ]; then
++		echo "Invalid jobid: $jobid"
+ 		echo "$out"
+ 		return 1
+ 	fi
+-- 
+2.20.1
+
+
+From 3cce23b5b863abf2c2352f5a066dc005d9728b18 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Tue, 12 Mar 2019 09:40:58 +0100
+Subject: [PATCH 2/5] s3:client: Pass DEVICE_URI and AUTH_INFO_REQUIRED env to
+ smbspool
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13832
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Bryan Mason <bmason@redhat.com>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit 43160184d254a57f87bb2adeba47f48d8539533a)
+---
+ source3/client/smbspool_krb5_wrapper.c | 24 +++++++++++++++++++++---
+ 1 file changed, 21 insertions(+), 3 deletions(-)
+
+diff --git a/source3/client/smbspool_krb5_wrapper.c b/source3/client/smbspool_krb5_wrapper.c
+index dee3b4c54be..5c4da33238b 100644
+--- a/source3/client/smbspool_krb5_wrapper.c
++++ b/source3/client/smbspool_krb5_wrapper.c
+@@ -84,24 +84,36 @@ int main(int argc, char *argv[])
+ 	struct passwd *pwd;
+ 	char gen_cc[PATH_MAX] = {0};
+ 	struct stat sb;
+-	char *env;
++	char *env = NULL;
++	char auth_info_required[256] = {0};
++	char device_uri[4096] = {0};
+ 	uid_t uid = (uid_t)-1;
+ 	gid_t gid = (gid_t)-1;
+ 	unsigned long tmp;
+ 	int cmp;
+ 	int rc;
+ 
++	env = getenv("DEVICE_URI");
++	if (env != NULL && strlen(env) > 2) {
++		snprintf(device_uri, sizeof(device_uri), "%s", env);
++	}
++
+ 	/* Check if AuthInfoRequired is set to negotiate */
+ 	env = getenv("AUTH_INFO_REQUIRED");
+ 
+         /* If not set, then just call smbspool. */
+-	if (env == NULL) {
++	if (env == NULL || env[0] == 0) {
+ 		CUPS_SMB_DEBUG("AUTH_INFO_REQUIRED is not set - "
+ 			       "execute smbspool");
+ 		goto smbspool;
+ 	} else {
+ 		CUPS_SMB_DEBUG("AUTH_INFO_REQUIRED=%s", env);
+ 
++		snprintf(auth_info_required,
++			 sizeof(auth_info_required),
++			 "%s",
++			 env);
++
+ 		cmp = strcmp(env, "username,password");
+ 		if (cmp == 0) {
+ 			CUPS_SMB_DEBUG("Authenticate using username/password - "
+@@ -223,12 +235,18 @@ create_env:
+ #else
+ 	{
+ 		extern char **environ;
+-		environ = calloc(1, sizeof(*environ));
++		environ = calloc(3, sizeof(*environ));
+ 	}
+ #endif
+ 
+ 	CUPS_SMB_DEBUG("Setting KRB5CCNAME to '%s'", gen_cc);
+ 	setenv("KRB5CCNAME", gen_cc, 1);
++	if (device_uri[0] != '\0') {
++		setenv("DEVICE_URI", device_uri, 1);
++	}
++	if (auth_info_required[0] != '\0') {
++		setenv("AUTH_INFO_REQUIRED", auth_info_required, 1);
++	}
+ 
+ smbspool:
+ 	snprintf(smbspool_cmd,
+-- 
+2.20.1
+
+
+From 0c03a0baf57ef4503e98b9e2ddd5695e6c8dd3fd Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Fri, 4 Jan 2019 09:21:24 +0100
+Subject: [PATCH 3/5] s3:client: Evaluate the AUTH_INFO_REQUIRED variable set
+ by cups
+
+This should not switch to username,password if cups has been configured
+to use negotiate (Kerberos authentication).
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13832
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Bryan Mason <bmason@redhat.com>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit 5274b09fbaa5e45cc58f3301818d4e9f6a402845)
+---
+ source3/client/smbspool.c | 32 ++++++++++++++++++++------------
+ 1 file changed, 20 insertions(+), 12 deletions(-)
+
+diff --git a/source3/client/smbspool.c b/source3/client/smbspool.c
+index 389e4ea553f..3dbf6be014b 100644
+--- a/source3/client/smbspool.c
++++ b/source3/client/smbspool.c
+@@ -60,7 +60,7 @@
+  * Local functions...
+  */
+ 
+-static int      get_exit_code(struct cli_state * cli, NTSTATUS nt_status, bool use_kerberos);
++static int      get_exit_code(struct cli_state * cli, NTSTATUS nt_status);
+ static void     list_devices(void);
+ static struct cli_state *smb_complete_connection(const char *, const char *,
+ 	int, const char *, const char *, const char *, const char *, int, bool *need_auth);
+@@ -72,6 +72,8 @@ static char    *uri_unescape_alloc(const char *);
+ static bool     smb_encrypt;
+ #endif
+ 
++static const char *auth_info_required;
++
+ /*
+  * 'main()' - Main entry for SMB backend.
+  */
+@@ -185,6 +187,11 @@ main(int argc,			/* I - Number of command-line arguments */
+ 		}
+ 	}
+ 
++	auth_info_required = getenv("AUTH_INFO_REQUIRED");
++	if (auth_info_required == NULL) {
++		auth_info_required = "none";
++	}
++
+ 	cmp = strncmp(dev_uri, "smb://", 6);
+ 	if (cmp != 0) {
+ 		fprintf(stderr,
+@@ -233,6 +240,10 @@ main(int argc,			/* I - Number of command-line arguments */
+ 		server = uri + 6;
+ 	}
+ 
++	if (password != empty_str) {
++		auth_info_required = "username,password";
++	}
++
+ 	tmp = server;
+ 
+ 	if ((sep = strchr_m(tmp, '/')) == NULL) {
+@@ -352,8 +363,7 @@ done:
+ 
+ static int
+ get_exit_code(struct cli_state * cli,
+-	      NTSTATUS nt_status,
+-	      bool use_kerberos)
++	      NTSTATUS nt_status)
+ {
+ 	int i;
+ 
+@@ -380,10 +390,7 @@ get_exit_code(struct cli_state * cli,
+ 		}
+ 
+ 		if (cli) {
+-			if (use_kerberos)
+-				fputs("ATTR: auth-info-required=negotiate\n", stderr);
+-			else
+-				fputs("ATTR: auth-info-required=username,password\n", stderr);
++			fprintf(stderr, "ATTR: auth-info-required=%s\n", auth_info_required);
+ 		}
+ 
+ 		/*
+@@ -452,6 +459,7 @@ smb_complete_connection(const char *myname,
+ 	}
+ 
+ 	if (flags & CLI_FULL_CONNECTION_USE_KERBEROS) {
++		auth_info_required = "negotiate";
+ 		use_kerberos = true;
+ 	}
+ 
+@@ -474,7 +482,7 @@ smb_complete_connection(const char *myname,
+ 	if (!NT_STATUS_IS_OK(nt_status)) {
+ 		fprintf(stderr, "ERROR: Session setup failed: %s\n", nt_errstr(nt_status));
+ 
+-		if (get_exit_code(cli, nt_status, use_kerberos) == 2) {
++		if (get_exit_code(cli, nt_status) == 2) {
+ 			*need_auth = true;
+ 		}
+ 
+@@ -488,7 +496,7 @@ smb_complete_connection(const char *myname,
+ 		fprintf(stderr, "ERROR: Tree connect failed (%s)\n",
+ 			nt_errstr(nt_status));
+ 
+-		if (get_exit_code(cli, nt_status, use_kerberos) == 2) {
++		if (get_exit_code(cli, nt_status) == 2) {
+ 			*need_auth = true;
+ 		}
+ 
+@@ -677,7 +685,7 @@ smb_print(struct cli_state * cli,	/* I - SMB connection */
+ 	if (!NT_STATUS_IS_OK(nt_status)) {
+ 		fprintf(stderr, "ERROR: %s opening remote spool %s\n",
+ 			nt_errstr(nt_status), title);
+-		return get_exit_code(cli, nt_status, false);
++		return get_exit_code(cli, nt_status);
+ 	}
+ 
+ 	/*
+@@ -695,7 +703,7 @@ smb_print(struct cli_state * cli,	/* I - SMB connection */
+ 		status = cli_writeall(cli, fnum, 0, (uint8_t *)buffer,
+ 				      tbytes, nbytes, NULL);
+ 		if (!NT_STATUS_IS_OK(status)) {
+-			int ret = get_exit_code(cli, status, false);
++			int ret = get_exit_code(cli, status);
+ 			fprintf(stderr, "ERROR: Error writing spool: %s\n",
+ 				nt_errstr(status));
+ 			fprintf(stderr, "DEBUG: Returning status %d...\n",
+@@ -711,7 +719,7 @@ smb_print(struct cli_state * cli,	/* I - SMB connection */
+ 	if (!NT_STATUS_IS_OK(nt_status)) {
+ 		fprintf(stderr, "ERROR: %s closing remote spool %s\n",
+ 			nt_errstr(nt_status), title);
+-		return get_exit_code(cli, nt_status, false);
++		return get_exit_code(cli, nt_status);
+ 	} else {
+ 		return (0);
+ 	}
+-- 
+2.20.1
+
+
+From 59c5b1c6bad46ac523504120833080836cdc19a1 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Tue, 12 Mar 2019 10:09:14 +0100
+Subject: [PATCH 4/5] s3:client: Make sure we work on a copy of the title
+
+We can't be sure we can write to the input buffer.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13832
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Bryan Mason <bmason@redhat.com>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit 129ae27946318a075e99c9e6d1bacf8963f72282)
+---
+ source3/client/smbspool.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/source3/client/smbspool.c b/source3/client/smbspool.c
+index 3dbf6be014b..94c7ea368a2 100644
+--- a/source3/client/smbspool.c
++++ b/source3/client/smbspool.c
+@@ -66,7 +66,7 @@ static struct cli_state *smb_complete_connection(const char *, const char *,
+ 	int, const char *, const char *, const char *, const char *, int, bool *need_auth);
+ static struct cli_state *smb_connect(const char *, const char *, int, const
+ 	char *, const char *, const char *, const char *, bool *need_auth);
+-static int      smb_print(struct cli_state *, char *, FILE *);
++static int      smb_print(struct cli_state *, const char *, FILE *);
+ static char    *uri_unescape_alloc(const char *);
+ #if 0
+ static bool     smb_encrypt;
+@@ -655,7 +655,7 @@ kerberos_auth:
+ 
+ static int			/* O - 0 = success, non-0 = failure */
+ smb_print(struct cli_state * cli,	/* I - SMB connection */
+-	  char *title,		/* I - Title/job name */
++	  const char *print_title,		/* I - Title/job name */
+ 	  FILE * fp)
+ {				/* I - File to print */
+ 	uint16_t             fnum;	/* File number */
+@@ -663,12 +663,18 @@ smb_print(struct cli_state * cli,	/* I - SMB connection */
+ 	                tbytes;	/* Total bytes read */
+ 	char            buffer[8192],	/* Buffer for copy */
+ 	               *ptr;	/* Pointer into title */
++	char title[1024] = {0};
++	int len;
+ 	NTSTATUS nt_status;
+ 
+ 
+ 	/*
+-         * Sanitize the title...
+-         */
++	 * Sanitize the title...
++	 */
++	len = snprintf(title, sizeof(title), "%s", print_title);
++	if (len != strlen(print_title)) {
++		return 2;
++	}
+ 
+ 	for (ptr = title; *ptr; ptr++) {
+ 		if (!isalnum((int) *ptr) && !isspace((int) *ptr)) {
+-- 
+2.20.1
+
+
+From 912e8b22b3b35c17bce35d10d543cc1505a15c46 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Tue, 12 Mar 2019 11:40:30 +0100
+Subject: [PATCH 5/5] s3:client: Fix smbspool device uri handling
+
+If we are executed as a CUPS backend, argv[0] is set to the device uri.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13832
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Bryan Mason <bmason@redhat.com>
+Signed-off-by: Guenther Deschner <gd@samba.org>
+
+(cherry picked from commit 69d7a496d3bf52eaa10e81132bb61430863fdd8a)
+---
+ source3/client/smbspool.c | 120 ++++++++++++++++++++++++++++++--------
+ 1 file changed, 96 insertions(+), 24 deletions(-)
+
+diff --git a/source3/client/smbspool.c b/source3/client/smbspool.c
+index 94c7ea368a2..97d00bdd011 100644
+--- a/source3/client/smbspool.c
++++ b/source3/client/smbspool.c
+@@ -99,10 +99,12 @@ main(int argc,			/* I - Number of command-line arguments */
+ 	char            empty_str[] = "";
+ 	int             tries = 0;
+ 	bool		need_auth = true;
+-	const char     *dev_uri;
++	const char     *dev_uri = NULL;
++	const char     *env = NULL;
+ 	const char     *config_file = NULL;
+ 	TALLOC_CTX     *frame = talloc_stackframe();
+-	bool device_uri_cmdline = false;
++	const char *print_user = NULL;
++	const char *print_title = NULL;
+ 	const char *print_file = NULL;
+ 	const char *print_copies = NULL;
+ 	int cmp;
+@@ -139,21 +141,81 @@ main(int argc,			/* I - Number of command-line arguments */
+ 	}
+ 
+ 	/*
+-	 * If we have 6 arguments find out if we have the device_uri from the
+-	 * command line or the print data
++	 * Find out if we have the device_uri in the command line.
++	 *
++	 * If we are started as a CUPS backend argv[0] is normally the
++	 * device_uri!
+ 	 */
+-	if (argc == 7) {
+-		cmp = strncmp(argv[1], "smb://", 6);
+-		if (cmp == 0) {
+-			device_uri_cmdline = true;
++	if (argc == 8) {
++		/*
++		 * smbspool <uri> <job> <user> <title> <copies> <options> <file>
++		 * 0        1     2     3      4       5        6         7
++		 */
++
++		dev_uri = argv[1];
++
++		print_user = argv[3];
++		print_title = argv[4];
++		print_copies = argv[5];
++		print_file = argv[7];
++	} else if (argc == 7) {
++		int cmp1;
++		int cmp2;
++
++		/*
++		 * <uri>    <job> <user> <title> <copies> <options> <file>
++		 * smbspool <uri> <job>  <user>  <title>  <copies>  <options>
++		 * smbspool <job> <user> <title> <copies> <options> <file> | DEVICE_URI
++		 */
++		cmp1 = strncmp(argv[0], "smb://", 6);
++		cmp2 = strncmp(argv[1], "smb://", 6);
++
++		if (cmp1 == 0) {
++			/*
++			 * <uri>    <job> <user> <title> <copies> <options> <file>
++			 * 0        1     2      3       4        5         6
++			 */
++			dev_uri = argv[0];
++
++			print_user = argv[2];
++			print_title = argv[3];
++			print_copies = argv[4];
++			print_file = argv[6];
++		} else if (cmp2 == 0) {
++			/*
++			 * smbspool <uri> <job>  <user>  <title>  <copies>  <options>
++			 * 0        1     2      3       4        5         6
++			 */
++			dev_uri = argv[1];
++
++			print_user = argv[3];
++			print_title = argv[4];
++			print_copies = argv[5];
++			print_file = NULL;
+ 		} else {
++			/*
++			 * smbspool <job> <user> <title> <copies> <options> <file> | DEVICE_URI
++			 * 0        1     2      3       4        5         6
++			 */
++			print_user = argv[2];
++			print_title = argv[3];
+ 			print_copies = argv[4];
+ 			print_file = argv[6];
+ 		}
+-	} else if (argc == 8) {
+-		device_uri_cmdline = true;
+-		print_copies = argv[5];
+-		print_file = argv[7];
++	} else if (argc == 6) {
++		/*
++		 * <uri>    <job> <user> <title> <copies> <options>
++		 * smbspool <job> <user> <title> <copies> <options> | DEVICE_URI
++		 * 0        1     2      3       4        5
++		 */
++		cmp = strncmp(argv[0], "smb://", 6);
++		if (cmp == 0) {
++			dev_uri = argv[0];
++		}
++
++		print_user = argv[2];
++		print_title = argv[3];
++		print_copies = argv[4];
+ 	}
+ 
+ 	if (print_file != NULL) {
+@@ -178,18 +240,17 @@ main(int argc,			/* I - Number of command-line arguments */
+ 	/*
+ 	 * Find the URI ...
+ 	 */
+-	if (device_uri_cmdline) {
+-		dev_uri = argv[1];
+-	} else {
+-		dev_uri = getenv("DEVICE_URI");
+-		if (dev_uri == NULL || strlen(dev_uri) == 0) {
+-			dev_uri = "";
++	if (dev_uri == NULL) {
++		env = getenv("DEVICE_URI");
++		if (env != NULL && env[0] != '\0') {
++			dev_uri = env;
+ 		}
+ 	}
+ 
+-	auth_info_required = getenv("AUTH_INFO_REQUIRED");
+-	if (auth_info_required == NULL) {
+-		auth_info_required = "none";
++	if (dev_uri == NULL) {
++		fprintf(stderr,
++			"ERROR: No valid device URI has been specified\n");
++		goto done;
+ 	}
+ 
+ 	cmp = strncmp(dev_uri, "smb://", 6);
+@@ -205,6 +266,11 @@ main(int argc,			/* I - Number of command-line arguments */
+ 		goto done;
+ 	}
+ 
++	auth_info_required = getenv("AUTH_INFO_REQUIRED");
++	if (auth_info_required == NULL) {
++		auth_info_required = "none";
++	}
++
+ 	/*
+          * Extract the destination from the URI...
+          */
+@@ -301,8 +367,14 @@ main(int argc,			/* I - Number of command-line arguments */
+ 	load_interfaces();
+ 
+ 	do {
+-		cli = smb_connect(workgroup, server, port, printer,
+-			username, password, argv[3], &need_auth);
++		cli = smb_connect(workgroup,
++				  server,
++				  port,
++				  printer,
++				  username,
++				  password,
++				  print_user,
++				  &need_auth);
+ 		if (cli == NULL) {
+ 			if (need_auth) {
+ 				exit(2);
+@@ -338,7 +410,7 @@ main(int argc,			/* I - Number of command-line arguments */
+          */
+ 
+ 	for (i = 0; i < copies; i++) {
+-		status = smb_print(cli, argv[4] /* title */ , fp);
++		status = smb_print(cli, print_title, fp);
+ 		if (status != 0) {
+ 			break;
+ 		}
+-- 
+2.20.1
+
