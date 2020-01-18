@@ -1,0 +1,47 @@
+From a751c29e4ff3fbdf573252b791775fd805cd7759 Mon Sep 17 00:00:00 2001
+From: Jeremy Allison <jra@samba.org>
+Date: Wed, 29 Nov 2017 09:21:30 -0800
+Subject: [PATCH] s3: libsmb: Fix valgrind read-after-free error in
+ cli_smb2_close_fnum_recv().
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+cli_smb2_close_fnum_recv() uses tevent_req_simple_recv_ntstatus(req), which
+frees req, then uses the state pointer which was owned by req.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13171
+
+Signed-off-by: Jeremy Allison <jra@samba.org>
+Reviewed-by: Ralph Böhme <slow@samba.org>
+
+Autobuild-User(master): Jeremy Allison <jra@samba.org>
+Autobuild-Date(master): Thu Nov 30 05:47:12 CET 2017 on sn-devel-144
+
+(cherry picked from commit 5c8032b6b8ce4439b3ef8f43a62a419f081eb787)
+---
+ source3/libsmb/cli_smb2_fnum.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/source3/libsmb/cli_smb2_fnum.c b/source3/libsmb/cli_smb2_fnum.c
+index 5d46d543002..237e6bb2b54 100644
+--- a/source3/libsmb/cli_smb2_fnum.c
++++ b/source3/libsmb/cli_smb2_fnum.c
+@@ -449,8 +449,12 @@ NTSTATUS cli_smb2_close_fnum_recv(struct tevent_req *req)
+ {
+ 	struct cli_smb2_close_fnum_state *state = tevent_req_data(
+ 		req, struct cli_smb2_close_fnum_state);
+-	NTSTATUS status = tevent_req_simple_recv_ntstatus(req);
+-	state->cli->raw_status = status;
++	NTSTATUS status = NT_STATUS_OK;
++
++	if (tevent_req_is_nterror(req, &status)) {
++		state->cli->raw_status = status;
++	}
++	tevent_req_received(req);
+ 	return status;
+ }
+ 
+-- 
+2.15.0.531.g2ccb3012c9-goog
+

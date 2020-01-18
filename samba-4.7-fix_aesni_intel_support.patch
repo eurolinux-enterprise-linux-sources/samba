@@ -1,0 +1,72 @@
+From db7947e144d10c15468991cad50315b70f2609d5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Bj=C3=B6rn=20Baumbach?= <bb@sernet.de>
+Date: Mon, 4 Dec 2017 10:49:19 +0100
+Subject: [PATCH 1/2] third_party: Link th aesni-intel library with -z
+ noexecstack
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13174
+
+Signed-off-by: Björn Baumbach <bb@sernet.de>
+Reviewed-by: Andreas Schneider <asn@samba.org>
+---
+ third_party/aesni-intel/wscript | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/third_party/aesni-intel/wscript b/third_party/aesni-intel/wscript
+index eb92d6626fe..0ccd9eb1e5b 100644
+--- a/third_party/aesni-intel/wscript
++++ b/third_party/aesni-intel/wscript
+@@ -12,6 +12,8 @@ def configure(conf):
+                 raise Utils.WafError('--aes-accel=intelaesni selected and non x86_64 CPU')
+         else:
+             raise Utils.WafError('--aes-accel=intelaesni selected and compiler rejects -Wp,-E,-lang-asm')
++        if not conf.CHECK_LDFLAGS('-Wl,-z,noexecstack'):
++            raise Utils.WafError('--aes-accel=intelaesni selected and linker rejects -z noexecstack')
+ 
+ def build(bld):
+     if not bld.CONFIG_SET('HAVE_AESNI_INTEL'):
+@@ -20,4 +22,5 @@ def build(bld):
+     bld.SAMBA_LIBRARY('aesni-intel',
+         source='aesni-intel_asm.c',
+         cflags='-Wp,-E,-lang-asm',
++        ldflags='-Wl,-z,noexecstack',
+         private_library=True)
+-- 
+2.15.0
+
+
+From ded56e00f81614e128301d75e38e4b692a712cc4 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 4 Dec 2017 11:00:10 +0100
+Subject: [PATCH 2/2] third_party: Fix a typo in the option name
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+---
+ third_party/aesni-intel/wscript | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/third_party/aesni-intel/wscript b/third_party/aesni-intel/wscript
+index 0ccd9eb1e5b..f0723a52501 100644
+--- a/third_party/aesni-intel/wscript
++++ b/third_party/aesni-intel/wscript
+@@ -9,11 +9,11 @@ def configure(conf):
+                 print("Compiling with Intel AES instructions")
+                 conf.DEFINE('HAVE_AESNI_INTEL', 1)
+             else:
+-                raise Utils.WafError('--aes-accel=intelaesni selected and non x86_64 CPU')
++                raise Utils.WafError('--accel-aes=intelaesni selected and non x86_64 CPU')
+         else:
+-            raise Utils.WafError('--aes-accel=intelaesni selected and compiler rejects -Wp,-E,-lang-asm')
++            raise Utils.WafError('--accel-aes=intelaesni selected and compiler rejects -Wp,-E,-lang-asm')
+         if not conf.CHECK_LDFLAGS('-Wl,-z,noexecstack'):
+-            raise Utils.WafError('--aes-accel=intelaesni selected and linker rejects -z noexecstack')
++            raise Utils.WafError('--accel-aes=intelaesni selected and linker rejects -z noexecstack')
+ 
+ def build(bld):
+     if not bld.CONFIG_SET('HAVE_AESNI_INTEL'):
+-- 
+2.15.0
+

@@ -1,0 +1,2595 @@
+From 5604f16d805a73dd35a69c162966d081a1ebdb84 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Thu, 15 Mar 2018 17:40:07 +0100
+Subject: [PATCH 01/21] s3:torture: add SMB2-ANONYMOUS which asserts no GUEST
+ bit for anonymous
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 82d8aa3b9cb15512d29a97b5a7e55ea1a052734f)
+(cherry picked from commit 23d1850c1c632984052ac923ab365501dd1c0195)
+---
+ source3/torture/proto.h     |  1 +
+ source3/torture/test_smb2.c | 42 +++++++++++++++++++++++++++++++++++++
+ source3/torture/torture.c   |  1 +
+ 3 files changed, 44 insertions(+)
+
+diff --git a/source3/torture/proto.h b/source3/torture/proto.h
+index 4c3e5401ce0..6f12ff7c2b9 100644
+--- a/source3/torture/proto.h
++++ b/source3/torture/proto.h
+@@ -95,6 +95,7 @@ bool run_nttrans_create(int dummy);
+ bool run_nttrans_fsctl(int dummy);
+ bool run_smb2_basic(int dummy);
+ bool run_smb2_negprot(int dummy);
++bool run_smb2_anonymous(int dummy);
+ bool run_smb2_session_reconnect(int dummy);
+ bool run_smb2_tcon_dependence(int dummy);
+ bool run_smb2_multi_channel(int dummy);
+diff --git a/source3/torture/test_smb2.c b/source3/torture/test_smb2.c
+index 297c3abca9f..897d034f6a9 100644
+--- a/source3/torture/test_smb2.c
++++ b/source3/torture/test_smb2.c
+@@ -24,6 +24,7 @@
+ #include "../libcli/smb/smbXcli_base.h"
+ #include "libcli/security/security.h"
+ #include "libsmb/proto.h"
++#include "auth/credentials/credentials.h"
+ #include "auth/gensec/gensec.h"
+ #include "auth_generic.h"
+ #include "../librpc/ndr/libndr.h"
+@@ -274,6 +275,47 @@ bool run_smb2_negprot(int dummy)
+ 	return true;
+ }
+ 
++bool run_smb2_anonymous(int dummy)
++{
++	struct cli_state *cli = NULL;
++	NTSTATUS status;
++	struct cli_credentials *anon_creds = NULL;
++	bool guest = false;
++
++	printf("Starting SMB2-ANONYMOUS\n");
++
++	if (!torture_init_connection(&cli)) {
++		return false;
++	}
++
++	status = smbXcli_negprot(cli->conn, cli->timeout,
++				 PROTOCOL_SMB2_02, PROTOCOL_LATEST);
++	if (!NT_STATUS_IS_OK(status)) {
++		printf("smbXcli_negprot returned %s\n", nt_errstr(status));
++		return false;
++	}
++
++	anon_creds = cli_credentials_init_anon(talloc_tos());
++	if (anon_creds == NULL) {
++		printf("cli_credentials_init_anon failed\n");
++		return false;
++	}
++
++	status = cli_session_setup_creds(cli, anon_creds);
++	if (!NT_STATUS_IS_OK(status)) {
++		printf("cli_session_setup returned %s\n", nt_errstr(status));
++		return false;
++	}
++
++	guest = smbXcli_session_is_guest(cli->smb2.session);
++	if (guest) {
++		printf("anonymous session should not have guest authentication\n");
++		return false;
++	}
++
++	return true;
++}
++
+ bool run_smb2_session_reconnect(int dummy)
+ {
+ 	struct cli_state *cli1;
+diff --git a/source3/torture/torture.c b/source3/torture/torture.c
+index 31e2bcc3497..e3834432ccb 100644
+--- a/source3/torture/torture.c
++++ b/source3/torture/torture.c
+@@ -11644,6 +11644,7 @@ static struct {
+ 	{ "NOTIFY-ONLINE", run_notify_online },
+ 	{ "SMB2-BASIC", run_smb2_basic },
+ 	{ "SMB2-NEGPROT", run_smb2_negprot },
++	{ "SMB2-ANONYMOUS", run_smb2_anonymous },
+ 	{ "SMB2-SESSION-RECONNECT", run_smb2_session_reconnect },
+ 	{ "SMB2-TCON-DEPENDENCE", run_smb2_tcon_dependence },
+ 	{ "SMB2-MULTI-CHANNEL", run_smb2_multi_channel },
+-- 
+2.17.0
+
+
+From 6dfd59a8a8862b0954f8bd87b3816062f00fea0f Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Thu, 15 Mar 2018 18:04:21 +0100
+Subject: [PATCH 02/21] s3:selftest: run SMB2-ANONYMOUS
+
+This fails against a non AD DC smbd.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit bf707a1eba39e996bb19457b63ddb658cc4183c2)
+(cherry picked from commit e39a5bd12e1704926c9d8141d8ef75a093670892)
+---
+ selftest/knownfail.d/anonymous-guest | 1 +
+ source3/selftest/tests.py            | 1 +
+ 2 files changed, 2 insertions(+)
+ create mode 100644 selftest/knownfail.d/anonymous-guest
+
+diff --git a/selftest/knownfail.d/anonymous-guest b/selftest/knownfail.d/anonymous-guest
+new file mode 100644
+index 00000000000..a134cece3d5
+--- /dev/null
++++ b/selftest/knownfail.d/anonymous-guest
+@@ -0,0 +1 @@
++^samba3.smbtorture_s3.*nt4_dc.*.SMB2-ANONYMOUS.smbtorture
+diff --git a/source3/selftest/tests.py b/source3/selftest/tests.py
+index 56b94c436ce..c0522b3ed6f 100755
+--- a/source3/selftest/tests.py
++++ b/source3/selftest/tests.py
+@@ -75,6 +75,7 @@ tests = ["FDPASS", "LOCK1", "LOCK2", "LOCK3", "LOCK4", "LOCK5", "LOCK6", "LOCK7"
+         "GETADDRINFO", "UID-REGRESSION-TEST", "SHORTNAME-TEST",
+         "CASE-INSENSITIVE-CREATE", "SMB2-BASIC", "NTTRANS-FSCTL", "SMB2-NEGPROT",
+         "SMB2-SESSION-REAUTH", "SMB2-SESSION-RECONNECT", "SMB2-FTRUNCATE",
++        "SMB2-ANONYMOUS",
+         "CLEANUP1",
+         "CLEANUP2",
+         "CLEANUP4",
+-- 
+2.17.0
+
+
+From 40b619182e63df1cbc8e47c79a0ac0f83debce69 Mon Sep 17 00:00:00 2001
+From: Ralph Boehme <slow@samba.org>
+Date: Wed, 14 Mar 2018 11:44:49 +0100
+Subject: [PATCH 03/21] libcli/security: only announce a session as GUEST if
+ 'Builtin\Guests' is there without 'Authenticated User'
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit f564847c8e9d31fe07dd3cbf435986b36f097fa3)
+(cherry picked from commit ff7a8e416b53e073a6d16fb122cdeba8b53c6e53)
+---
+ libcli/security/session.c | 18 +++++++++++-------
+ 1 file changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/libcli/security/session.c b/libcli/security/session.c
+index 0fbb87d584e..f17e884c847 100644
+--- a/libcli/security/session.c
++++ b/libcli/security/session.c
+@@ -26,6 +26,9 @@
+ enum security_user_level security_session_user_level(struct auth_session_info *session_info,
+ 						     const struct dom_sid *domain_sid)
+ {
++	bool authenticated = false;
++	bool guest = false;
++
+ 	if (!session_info) {
+ 		return SECURITY_ANONYMOUS;
+ 	}
+@@ -38,8 +41,13 @@ enum security_user_level security_session_user_level(struct auth_session_info *s
+ 		return SECURITY_ANONYMOUS;
+ 	}
+ 
+-	if (security_token_has_builtin_guests(session_info->security_token)) {
+-		return SECURITY_GUEST;
++	authenticated = security_token_has_nt_authenticated_users(session_info->security_token);
++	guest = security_token_has_builtin_guests(session_info->security_token);
++	if (!authenticated) {
++		if (guest) {
++			return SECURITY_GUEST;
++		}
++		return SECURITY_ANONYMOUS;
+ 	}
+ 
+ 	if (security_token_has_builtin_administrators(session_info->security_token)) {
+@@ -60,9 +68,5 @@ enum security_user_level security_session_user_level(struct auth_session_info *s
+ 		return SECURITY_DOMAIN_CONTROLLER;
+ 	}
+ 
+-	if (security_token_has_nt_authenticated_users(session_info->security_token)) {
+-		return SECURITY_USER;
+-	}
+-
+-	return SECURITY_ANONYMOUS;
++	return SECURITY_USER;
+ }
+-- 
+2.17.0
+
+
+From b2e7990934503c86c17751a8c4f7d5f40b32aed7 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Thu, 1 Mar 2018 18:05:28 +0100
+Subject: [PATCH 04/21] s3:auth: remove unused auth_serversupplied_info->system
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 28ad1306b880a44824ee956a19656ac29581a1b9)
+(cherry picked from commit b991dca37a425cc252752e5a306df80077814aaf)
+---
+ source3/auth/auth_util.c | 1 -
+ source3/include/auth.h   | 1 -
+ 2 files changed, 2 deletions(-)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index 1021f2a6fef..4ae9dad2dd6 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -1045,7 +1045,6 @@ static struct auth_serversupplied_info *copy_session_info_serverinfo_guest(TALLO
+ 	SMB_ASSERT(src->unix_info);
+ 
+ 	dst->guest = true;
+-	dst->system = false;
+ 
+ 	/* This element must be provided to convert back to an
+ 	 * auth_serversupplied_info.  This needs to be from the
+diff --git a/source3/include/auth.h b/source3/include/auth.h
+index b7223c15036..d3055373964 100644
+--- a/source3/include/auth.h
++++ b/source3/include/auth.h
+@@ -30,7 +30,6 @@ struct extra_auth_info {
+ 
+ struct auth_serversupplied_info {
+ 	bool guest;
+-	bool system;
+ 
+ 	struct security_unix_token utok;
+ 
+-- 
+2.17.0
+
+
+From 092a1ddebdcd399676820edafb33afe535522ee4 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Fri, 2 Mar 2018 16:37:58 +0100
+Subject: [PATCH 05/21] s3:auth: add the "Unix Groups" sid for the primary gid
+
+The primary gid might not be in the gid array.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit f3ca3e71cc35876df47e31ec9c3643308add2405)
+(cherry picked from commit 1258f287420642698c456f6bb17bf4547a921964)
+---
+ source3/auth/auth_util.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index 4ae9dad2dd6..2aa40388d14 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -660,7 +660,11 @@ NTSTATUS create_local_token(TALLOC_CTX *mem_ctx,
+ 	 */
+ 
+ 	uid_to_unix_users_sid(session_info->unix_token->uid, &tmp_sid);
++	add_sid_to_array_unique(session_info->security_token, &tmp_sid,
++				&session_info->security_token->sids,
++				&session_info->security_token->num_sids);
+ 
++	gid_to_unix_groups_sid(session_info->unix_token->gid, &tmp_sid);
+ 	add_sid_to_array_unique(session_info->security_token, &tmp_sid,
+ 				&session_info->security_token->sids,
+ 				&session_info->security_token->num_sids);
+-- 
+2.17.0
+
+
+From c7b23189a548a0d684e04ef78e0fa7c3e3456316 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 6 Mar 2018 17:14:34 +0100
+Subject: [PATCH 06/21] s3:auth: move add_local_groups() out of
+ finalize_local_nt_token()
+
+finalize_local_nt_token() will be used in another place,
+were we don't want to add local groups in a following commit.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit df3d278853ec097df27c221369dfb3ed0297d6c8)
+(cherry picked from commit 85097b155447257d9c4a66cd43ac432a27b52529)
+---
+ source3/auth/token_util.c | 22 +++++++++++++++-------
+ 1 file changed, 15 insertions(+), 7 deletions(-)
+
+diff --git a/source3/auth/token_util.c b/source3/auth/token_util.c
+index 03c4b646007..e5a12db1ba3 100644
+--- a/source3/auth/token_util.c
++++ b/source3/auth/token_util.c
+@@ -208,6 +208,8 @@ static NTSTATUS add_builtin_administrators(struct security_token *token,
+ 	return NT_STATUS_OK;
+ }
+ 
++static NTSTATUS add_local_groups(struct security_token *result,
++				 bool is_guest);
+ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 					bool is_guest);
+ 
+@@ -323,6 +325,13 @@ NTSTATUS create_local_nt_token_from_info3(TALLOC_CTX *mem_ctx,
+ 		}
+ 	}
+ 
++	status = add_local_groups(usrtok, is_guest);
++	if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(3, ("Failed to add local groups\n"));
++		TALLOC_FREE(usrtok);
++		return status;
++	}
++
+ 	status = finalize_local_nt_token(usrtok, is_guest);
+ 	if (!NT_STATUS_IS_OK(status)) {
+ 		DEBUG(3, ("Failed to finalize nt token\n"));
+@@ -392,6 +401,12 @@ struct security_token *create_local_nt_token(TALLOC_CTX *mem_ctx,
+ 		}
+ 	}
+ 
++	status = add_local_groups(result, is_guest);
++	if (!NT_STATUS_IS_OK(status)) {
++		TALLOC_FREE(result);
++		return NULL;
++	}
++
+ 	status = finalize_local_nt_token(result, is_guest);
+ 	if (!NT_STATUS_IS_OK(status)) {
+ 		TALLOC_FREE(result);
+@@ -502,13 +517,6 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 	NTSTATUS status;
+ 	struct acct_info *info;
+ 
+-	/* Add any local groups. */
+-
+-	status = add_local_groups(result, is_guest);
+-	if (!NT_STATUS_IS_OK(status)) {
+-		return status;
+-	}
+-
+ 	/* Add in BUILTIN sids */
+ 
+ 	status = add_sid_to_array(result, &global_sid_World,
+-- 
+2.17.0
+
+
+From b914f0e37eb05eb656d37cb317f1b3d556325edd Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 13 Mar 2018 21:35:48 +0100
+Subject: [PATCH 07/21] s3:passdb: handle dom_sid=NULL in
+ create_builtin_{users,administrators}()
+
+We should not crash if we're called with NULL.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit efdc617c76d9043286e33b961f45ad4564232102)
+(cherry picked from commit c1f61c0816441be2061b3fd23db04dc60dcc64f7)
+---
+ source3/passdb/pdb_util.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/source3/passdb/pdb_util.c b/source3/passdb/pdb_util.c
+index bf7b2b8abd1..309eb893f8a 100644
+--- a/source3/passdb/pdb_util.c
++++ b/source3/passdb/pdb_util.c
+@@ -130,8 +130,9 @@ NTSTATUS create_builtin_users(const struct dom_sid *dom_sid)
+ 	}
+ 
+ 	/* add domain users */
+-	if ((IS_DC || (lp_server_role() == ROLE_DOMAIN_MEMBER))
+-		&& sid_compose(&dom_users, dom_sid, DOMAIN_RID_USERS))
++	if ((IS_DC || (lp_server_role() == ROLE_DOMAIN_MEMBER)) &&
++	    (dom_sid != NULL) &&
++	    sid_compose(&dom_users, dom_sid, DOMAIN_RID_USERS))
+ 	{
+ 		status = add_sid_to_builtin(&global_sid_Builtin_Users,
+ 					    &dom_users);
+@@ -159,8 +160,9 @@ NTSTATUS create_builtin_administrators(const struct dom_sid *dom_sid)
+ 	}
+ 
+ 	/* add domain admins */
+-	if ((IS_DC || (lp_server_role() == ROLE_DOMAIN_MEMBER))
+-		&& sid_compose(&dom_admins, dom_sid, DOMAIN_RID_ADMINS))
++	if ((IS_DC || (lp_server_role() == ROLE_DOMAIN_MEMBER)) &&
++	    (dom_sid != NULL) &&
++	    sid_compose(&dom_admins, dom_sid, DOMAIN_RID_ADMINS))
+ 	{
+ 		status = add_sid_to_builtin(&global_sid_Builtin_Administrators,
+ 					    &dom_admins);
+-- 
+2.17.0
+
+
+From db7aa26880d37b0966cbf99100457ba31d3a0e9b Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 13 Mar 2018 21:38:27 +0100
+Subject: [PATCH 08/21] s3:auth: only call secrets_fetch_domain_sid() once in
+ finalize_local_nt_token()
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit c2ffbf9f764a94ef1dc1280741884cf63a017308)
+(cherry picked from commit e0e4aa1ac539d2811bd801e9e3b8f69d7e306f3b)
+---
+ source3/auth/token_util.c | 35 +++++++++++++++++++----------------
+ 1 file changed, 19 insertions(+), 16 deletions(-)
+
+diff --git a/source3/auth/token_util.c b/source3/auth/token_util.c
+index e5a12db1ba3..f3d24cdac2f 100644
+--- a/source3/auth/token_util.c
++++ b/source3/auth/token_util.c
+@@ -190,6 +190,9 @@ static NTSTATUS add_builtin_administrators(struct security_token *token,
+ 	if ( IS_DC ) {
+ 		sid_copy( &domadm, get_global_sam_sid() );
+ 	} else {
++		if (dom_sid == NULL) {
++			return NT_STATUS_INVALID_PARAMETER_MIX;
++		}
+ 		sid_copy(&domadm, dom_sid);
+ 	}
+ 	sid_append_rid( &domadm, DOMAIN_RID_ADMINS );
+@@ -513,9 +516,11 @@ static NTSTATUS add_local_groups(struct security_token *result,
+ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 					bool is_guest)
+ {
+-	struct dom_sid dom_sid;
++	struct dom_sid _dom_sid = { 0, };
++	struct dom_sid *domain_sid = NULL;
+ 	NTSTATUS status;
+ 	struct acct_info *info;
++	bool ok;
+ 
+ 	/* Add in BUILTIN sids */
+ 
+@@ -547,6 +552,16 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 		}
+ 	}
+ 
++	become_root();
++	ok = secrets_fetch_domain_sid(lp_workgroup(), &_dom_sid);
++	if (ok) {
++		domain_sid = &_dom_sid;
++	} else {
++		DEBUG(3, ("Failed to fetch domain sid for %s\n",
++			  lp_workgroup()));
++	}
++	unbecome_root();
++
+ 	info = talloc_zero(talloc_tos(), struct acct_info);
+ 	if (info == NULL) {
+ 		DEBUG(0, ("talloc failed!\n"));
+@@ -561,18 +576,12 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 	if (!NT_STATUS_IS_OK(status)) {
+ 
+ 		become_root();
+-		if (!secrets_fetch_domain_sid(lp_workgroup(), &dom_sid)) {
+-			status = NT_STATUS_OK;
+-			DEBUG(3, ("Failed to fetch domain sid for %s\n",
+-				  lp_workgroup()));
+-		} else {
+-			status = create_builtin_administrators(&dom_sid);
+-		}
++		status = create_builtin_administrators(domain_sid);
+ 		unbecome_root();
+ 
+ 		if (NT_STATUS_EQUAL(status, NT_STATUS_PROTOCOL_UNREACHABLE)) {
+ 			/* Add BUILTIN\Administrators directly to token. */
+-			status = add_builtin_administrators(result, &dom_sid);
++			status = add_builtin_administrators(result, domain_sid);
+ 			if ( !NT_STATUS_IS_OK(status) ) {
+ 				DEBUG(3, ("Failed to check for local "
+ 					  "Administrators membership (%s)\n",
+@@ -593,13 +602,7 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 	if (!NT_STATUS_IS_OK(status)) {
+ 
+ 		become_root();
+-		if (!secrets_fetch_domain_sid(lp_workgroup(), &dom_sid)) {
+-			status = NT_STATUS_OK;
+-			DEBUG(3, ("Failed to fetch domain sid for %s\n",
+-				  lp_workgroup()));
+-		} else {
+-			status = create_builtin_users(&dom_sid);
+-		}
++		status = create_builtin_users(domain_sid);
+ 		unbecome_root();
+ 
+ 		if (!NT_STATUS_EQUAL(status, NT_STATUS_PROTOCOL_UNREACHABLE) &&
+-- 
+2.17.0
+
+
+From 9c86a3d2a0783fae2ec2883907ec877f9edd1dac Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 6 Mar 2018 23:26:28 +0100
+Subject: [PATCH 09/21] s3:auth: add add_builtin_guests() handling to
+ finalize_local_nt_token()
+
+We should add Builtin_Guests depending on the current token
+not based on 'is_guest'. Even authenticated users can be member
+a guest related group and therefore get Builtin_Guests.
+
+Sadly we still need to use 'is_guest' within create_local_nt_token()
+as we only have S-1-22-* SIDs there and still need to
+add Builtin_Guests.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit e8dc55d2b969b670322a913799d1af459a1000e7)
+(cherry picked from commit 7687d26f8bb6aa57672c70f95bee3f67b9957107)
+---
+ source3/auth/token_util.c | 122 +++++++++++++++++++++++++++++++++++---
+ 1 file changed, 114 insertions(+), 8 deletions(-)
+
+diff --git a/source3/auth/token_util.c b/source3/auth/token_util.c
+index f3d24cdac2f..30f2f8d346b 100644
+--- a/source3/auth/token_util.c
++++ b/source3/auth/token_util.c
+@@ -211,6 +211,74 @@ static NTSTATUS add_builtin_administrators(struct security_token *token,
+ 	return NT_STATUS_OK;
+ }
+ 
++static NTSTATUS add_builtin_guests(struct security_token *token,
++				   const struct dom_sid *dom_sid)
++{
++	struct dom_sid tmp_sid;
++	NTSTATUS status;
++
++	/*
++	 * First check the local GUEST account.
++	 */
++	sid_copy(&tmp_sid, get_global_sam_sid());
++	sid_append_rid(&tmp_sid, DOMAIN_RID_GUEST);
++
++	if (nt_token_check_sid(&tmp_sid, token)) {
++		status = add_sid_to_array_unique(token,
++					&global_sid_Builtin_Guests,
++					&token->sids, &token->num_sids);
++		if (!NT_STATUS_IS_OK(status)) {
++			return status;
++		}
++
++		return NT_STATUS_OK;
++	}
++
++	/*
++	 * First check the local GUESTS group.
++	 */
++	sid_copy(&tmp_sid, get_global_sam_sid());
++	sid_append_rid(&tmp_sid, DOMAIN_RID_GUESTS);
++
++	if (nt_token_check_sid(&tmp_sid, token)) {
++		status = add_sid_to_array_unique(token,
++					&global_sid_Builtin_Guests,
++					&token->sids, &token->num_sids);
++		if (!NT_STATUS_IS_OK(status)) {
++			return status;
++		}
++
++		return NT_STATUS_OK;
++	}
++
++	if (lp_server_role() != ROLE_DOMAIN_MEMBER) {
++		return NT_STATUS_OK;
++	}
++
++	if (dom_sid == NULL) {
++		return NT_STATUS_INVALID_PARAMETER_MIX;
++	}
++
++	/*
++	 * First check the domain GUESTS group.
++	 */
++	sid_copy(&tmp_sid, dom_sid);
++	sid_append_rid(&tmp_sid, DOMAIN_RID_GUESTS);
++
++	if (nt_token_check_sid(&tmp_sid, token)) {
++		status = add_sid_to_array_unique(token,
++					&global_sid_Builtin_Guests,
++					&token->sids, &token->num_sids);
++		if (!NT_STATUS_IS_OK(status)) {
++			return status;
++		}
++
++		return NT_STATUS_OK;
++	}
++
++	return NT_STATUS_OK;
++}
++
+ static NTSTATUS add_local_groups(struct security_token *result,
+ 				 bool is_guest);
+ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+@@ -416,6 +484,29 @@ struct security_token *create_local_nt_token(TALLOC_CTX *mem_ctx,
+ 		return NULL;
+ 	}
+ 
++	if (is_guest) {
++		/*
++		 * It's ugly, but for now it's
++		 * needed to add Builtin_Guests
++		 * here, the "local" token only
++		 * consist of S-1-22-* SIDs
++		 * and finalize_local_nt_token()
++		 * doesn't have the chance to
++		 * to detect it need to
++		 * add Builtin_Guests via
++		 * add_builtin_guests().
++		 */
++		status = add_sid_to_array_unique(result,
++						 &global_sid_Builtin_Guests,
++						 &result->sids,
++						 &result->num_sids);
++		if (!NT_STATUS_IS_OK(status)) {
++			DEBUG(3, ("Failed to add SID to nt token\n"));
++			TALLOC_FREE(result);
++			return NULL;
++		}
++	}
++
+ 	return result;
+ }
+ 
+@@ -535,14 +626,7 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 		return status;
+ 	}
+ 
+-	if (is_guest) {
+-		status = add_sid_to_array(result, &global_sid_Builtin_Guests,
+-					  &result->sids,
+-					  &result->num_sids);
+-		if (!NT_STATUS_IS_OK(status)) {
+-			return status;
+-		}
+-	} else {
++	if (!is_guest) {
+ 		status = add_sid_to_array(result,
+ 					  &global_sid_Authenticated_Users,
+ 					  &result->sids,
+@@ -613,6 +697,28 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 		}
+ 	}
+ 
++	/*
++	 * Add BUILTIN\Guests directly to token.
++	 * But only if the token already indicates
++	 * real guest access by:
++	 * - local GUEST account
++	 * - local GUESTS group
++	 * - domain GUESTS group
++	 *
++	 * Even if a user was authenticated, it
++	 * can be member of a guest related group.
++	 */
++	status = add_builtin_guests(result, domain_sid);
++	if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(3, ("Failed to check for local "
++			  "Guests membership (%s)\n",
++			  nt_errstr(status)));
++		/*
++		 * This is a hard error.
++		 */
++		return status;
++	}
++
+ 	TALLOC_FREE(info);
+ 
+ 	/* Deal with local groups */
+-- 
+2.17.0
+
+
+From 02ec86b90cc7c293d3086d59a0d349a967375665 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 6 Mar 2018 23:36:03 +0100
+Subject: [PATCH 10/21] s3:auth: don't try to expand system or anonymous tokens
+ in finalize_local_nt_token()
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 4f81ef9353ad76390aa910c8c17456fec21916c6)
+(cherry picked from commit ecee9453a6ef611763d11e88e2ecf212f065a86c)
+---
+ source3/auth/token_util.c | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/source3/auth/token_util.c b/source3/auth/token_util.c
+index 30f2f8d346b..6ebfa54126b 100644
+--- a/source3/auth/token_util.c
++++ b/source3/auth/token_util.c
+@@ -613,6 +613,13 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 	struct acct_info *info;
+ 	bool ok;
+ 
++	result->privilege_mask = 0;
++	result->rights_mask = 0;
++
++	if (result->num_sids == 0) {
++		return NT_STATUS_INVALID_TOKEN;
++	}
++
+ 	/* Add in BUILTIN sids */
+ 
+ 	status = add_sid_to_array(result, &global_sid_World,
+@@ -626,6 +633,23 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 		return status;
+ 	}
+ 
++	/*
++	 * Don't expand nested groups of system, anonymous etc
++	 *
++	 * Note that they still get SID_WORLD and SID_NETWORK
++	 * for now in order let existing tests pass.
++	 *
++	 * But SYSTEM doesn't get AUTHENTICATED_USERS
++	 * and ANONYMOUS doesn't get BUILTIN GUESTS anymore.
++	 */
++	if (security_token_is_anonymous(result)) {
++		return NT_STATUS_OK;
++	}
++	if (security_token_is_system(result)) {
++		result->privilege_mask = ~0;
++		return NT_STATUS_OK;
++	}
++
+ 	if (!is_guest) {
+ 		status = add_sid_to_array(result,
+ 					  &global_sid_Authenticated_Users,
+-- 
+2.17.0
+
+
+From e243c00682b4e3b82f5cdddf7079d6dadb5f2e68 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 6 Mar 2018 23:40:10 +0100
+Subject: [PATCH 11/21] s3:auth: pass AUTH_SESSION_INFO_* flags to
+ finalize_local_nt_token()
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit d3aae5ba65c7ed0d5e9f8389101cf1c8c1f0a25b)
+(cherry picked from commit 627a86bf2d516e256701f50473d0cdfd15d7eecc)
+---
+ source3/auth/token_util.c | 58 ++++++++++++++++++++++++++-------------
+ 1 file changed, 39 insertions(+), 19 deletions(-)
+
+diff --git a/source3/auth/token_util.c b/source3/auth/token_util.c
+index 6ebfa54126b..acb916ab55c 100644
+--- a/source3/auth/token_util.c
++++ b/source3/auth/token_util.c
+@@ -282,7 +282,7 @@ static NTSTATUS add_builtin_guests(struct security_token *token,
+ static NTSTATUS add_local_groups(struct security_token *result,
+ 				 bool is_guest);
+ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+-					bool is_guest);
++					uint32_t session_info_flags);
+ 
+ NTSTATUS get_user_sid_info3_and_extra(const struct netr_SamInfo3 *info3,
+ 				      const struct extra_auth_info *extra,
+@@ -313,6 +313,7 @@ NTSTATUS create_local_nt_token_from_info3(TALLOC_CTX *mem_ctx,
+ 					  struct security_token **ntok)
+ {
+ 	struct security_token *usrtok = NULL;
++	uint32_t session_info_flags = 0;
+ 	NTSTATUS status;
+ 	int i;
+ 
+@@ -403,7 +404,12 @@ NTSTATUS create_local_nt_token_from_info3(TALLOC_CTX *mem_ctx,
+ 		return status;
+ 	}
+ 
+-	status = finalize_local_nt_token(usrtok, is_guest);
++	session_info_flags |= AUTH_SESSION_INFO_DEFAULT_GROUPS;
++	if (!is_guest) {
++		session_info_flags |= AUTH_SESSION_INFO_AUTHENTICATED;
++	}
++
++	status = finalize_local_nt_token(usrtok, session_info_flags);
+ 	if (!NT_STATUS_IS_OK(status)) {
+ 		DEBUG(3, ("Failed to finalize nt token\n"));
+ 		TALLOC_FREE(usrtok);
+@@ -427,6 +433,7 @@ struct security_token *create_local_nt_token(TALLOC_CTX *mem_ctx,
+ 	struct security_token *result = NULL;
+ 	int i;
+ 	NTSTATUS status;
++	uint32_t session_info_flags = 0;
+ 
+ 	DEBUG(10, ("Create local NT token for %s\n",
+ 		   sid_string_dbg(user_sid)));
+@@ -478,7 +485,12 @@ struct security_token *create_local_nt_token(TALLOC_CTX *mem_ctx,
+ 		return NULL;
+ 	}
+ 
+-	status = finalize_local_nt_token(result, is_guest);
++	session_info_flags |= AUTH_SESSION_INFO_DEFAULT_GROUPS;
++	if (!is_guest) {
++		session_info_flags |= AUTH_SESSION_INFO_AUTHENTICATED;
++	}
++
++	status = finalize_local_nt_token(result, session_info_flags);
+ 	if (!NT_STATUS_IS_OK(status)) {
+ 		TALLOC_FREE(result);
+ 		return NULL;
+@@ -605,7 +617,7 @@ static NTSTATUS add_local_groups(struct security_token *result,
+ }
+ 
+ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+-					bool is_guest)
++					uint32_t session_info_flags)
+ {
+ 	struct dom_sid _dom_sid = { 0, };
+ 	struct dom_sid *domain_sid = NULL;
+@@ -620,17 +632,17 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 		return NT_STATUS_INVALID_TOKEN;
+ 	}
+ 
+-	/* Add in BUILTIN sids */
+-
+-	status = add_sid_to_array(result, &global_sid_World,
+-				  &result->sids, &result->num_sids);
+-	if (!NT_STATUS_IS_OK(status)) {
+-		return status;
+-	}
+-	status = add_sid_to_array(result, &global_sid_Network,
+-				  &result->sids, &result->num_sids);
+-	if (!NT_STATUS_IS_OK(status)) {
+-		return status;
++	if (session_info_flags & AUTH_SESSION_INFO_DEFAULT_GROUPS) {
++		status = add_sid_to_array(result, &global_sid_World,
++					  &result->sids, &result->num_sids);
++		if (!NT_STATUS_IS_OK(status)) {
++			return status;
++		}
++		status = add_sid_to_array(result, &global_sid_Network,
++					  &result->sids, &result->num_sids);
++		if (!NT_STATUS_IS_OK(status)) {
++			return status;
++		}
+ 	}
+ 
+ 	/*
+@@ -650,7 +662,7 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 		return NT_STATUS_OK;
+ 	}
+ 
+-	if (!is_guest) {
++	if (session_info_flags & AUTH_SESSION_INFO_AUTHENTICATED) {
+ 		status = add_sid_to_array(result,
+ 					  &global_sid_Authenticated_Users,
+ 					  &result->sids,
+@@ -660,6 +672,8 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 		}
+ 	}
+ 
++	/* Add in BUILTIN sids */
++
+ 	become_root();
+ 	ok = secrets_fetch_domain_sid(lp_workgroup(), &_dom_sid);
+ 	if (ok) {
+@@ -772,10 +786,16 @@ static NTSTATUS finalize_local_nt_token(struct security_token *result,
+ 		unbecome_root();
+ 	}
+ 
+-	/* Add privileges based on current user sids */
+ 
+-	get_privileges_for_sids(&result->privilege_mask, result->sids,
+-				result->num_sids);
++	if (session_info_flags & AUTH_SESSION_INFO_SIMPLE_PRIVILEGES) {
++		if (security_token_has_builtin_administrators(result)) {
++			result->privilege_mask = ~0;
++		}
++	} else {
++		/* Add privileges based on current user sids */
++		get_privileges_for_sids(&result->privilege_mask, result->sids,
++					result->num_sids);
++	}
+ 
+ 	return NT_STATUS_OK;
+ }
+-- 
+2.17.0
+
+
+From d97bfd5d7ecc48f6781161397928d9094d95dae1 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 6 Mar 2018 23:45:30 +0100
+Subject: [PATCH 12/21] s3:auth: remove static from finalize_local_nt_token()
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 7f47f9e1f220d2dd547cf77bbc292357a2173870)
+(cherry picked from commit 8b5253e5d4c79265a9c35955f83407a0c11a76d1)
+---
+ source3/auth/proto.h      | 2 ++
+ source3/auth/token_util.c | 6 ++----
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/source3/auth/proto.h b/source3/auth/proto.h
+index 3942815e467..d3403f1a929 100644
+--- a/source3/auth/proto.h
++++ b/source3/auth/proto.h
+@@ -359,6 +359,8 @@ struct security_token *create_local_nt_token(TALLOC_CTX *mem_ctx,
+ 					    bool is_guest,
+ 					    int num_groupsids,
+ 					    const struct dom_sid *groupsids);
++NTSTATUS finalize_local_nt_token(struct security_token *result,
++				 uint32_t session_info_flags);
+ NTSTATUS get_user_sid_info3_and_extra(const struct netr_SamInfo3 *info3,
+ 				      const struct extra_auth_info *extra,
+ 				      struct dom_sid *sid);
+diff --git a/source3/auth/token_util.c b/source3/auth/token_util.c
+index acb916ab55c..f015f8d2cd5 100644
+--- a/source3/auth/token_util.c
++++ b/source3/auth/token_util.c
+@@ -281,8 +281,6 @@ static NTSTATUS add_builtin_guests(struct security_token *token,
+ 
+ static NTSTATUS add_local_groups(struct security_token *result,
+ 				 bool is_guest);
+-static NTSTATUS finalize_local_nt_token(struct security_token *result,
+-					uint32_t session_info_flags);
+ 
+ NTSTATUS get_user_sid_info3_and_extra(const struct netr_SamInfo3 *info3,
+ 				      const struct extra_auth_info *extra,
+@@ -616,8 +614,8 @@ static NTSTATUS add_local_groups(struct security_token *result,
+ 	return NT_STATUS_OK;
+ }
+ 
+-static NTSTATUS finalize_local_nt_token(struct security_token *result,
+-					uint32_t session_info_flags)
++NTSTATUS finalize_local_nt_token(struct security_token *result,
++				 uint32_t session_info_flags)
+ {
+ 	struct dom_sid _dom_sid = { 0, };
+ 	struct dom_sid *domain_sid = NULL;
+-- 
+2.17.0
+
+
+From 424de089a89f226854e159c1ce0bab3dc2eb8eaf Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 6 Mar 2018 16:38:10 +0100
+Subject: [PATCH 13/21] auth: add auth_user_info_copy() function
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 6ff891195855403bc485725aef8d43d4e3cabacb)
+(cherry picked from commit 104de61756e6b098985c3a599a3ccf62cbbe7299)
+---
+ auth/auth_sam_reply.c | 35 +++++++++++++++++++++++++++++++++++
+ auth/auth_sam_reply.h |  3 +++
+ 2 files changed, 38 insertions(+)
+
+diff --git a/auth/auth_sam_reply.c b/auth/auth_sam_reply.c
+index 15d17b0745e..bd695151dc0 100644
+--- a/auth/auth_sam_reply.c
++++ b/auth/auth_sam_reply.c
+@@ -333,6 +333,41 @@ NTSTATUS make_user_info_SamBaseInfo(TALLOC_CTX *mem_ctx,
+ 	return NT_STATUS_OK;
+ }
+ 
++struct auth_user_info *auth_user_info_copy(TALLOC_CTX *mem_ctx,
++					   const struct auth_user_info *src)
++{
++	struct auth_user_info *dst = NULL;
++
++	dst = talloc_zero(mem_ctx, struct auth_user_info);
++	if (dst == NULL) {
++		return NULL;
++	}
++
++	*dst = *src;
++#define _COPY_STRING(_mem, _str) do { \
++	if ((_str) != NULL) { \
++		(_str) = talloc_strdup((_mem), (_str)); \
++		if ((_str) == NULL) { \
++			TALLOC_FREE(dst); \
++			return NULL; \
++		} \
++	} \
++} while(0)
++	_COPY_STRING(dst, dst->account_name);
++	_COPY_STRING(dst, dst->user_principal_name);
++	_COPY_STRING(dst, dst->domain_name);
++	_COPY_STRING(dst, dst->dns_domain_name);
++	_COPY_STRING(dst, dst->full_name);
++	_COPY_STRING(dst, dst->logon_script);
++	_COPY_STRING(dst, dst->profile_path);
++	_COPY_STRING(dst, dst->home_directory);
++	_COPY_STRING(dst, dst->home_drive);
++	_COPY_STRING(dst, dst->logon_server);
++#undef _COPY_STRING
++
++	return dst;
++}
++
+ /**
+  * Make a user_info_dc struct from the info3 returned by a domain logon
+  */
+diff --git a/auth/auth_sam_reply.h b/auth/auth_sam_reply.h
+index 4aa3096c889..e4b26e961d7 100644
+--- a/auth/auth_sam_reply.h
++++ b/auth/auth_sam_reply.h
+@@ -38,6 +38,9 @@ NTSTATUS make_user_info_SamBaseInfo(TALLOC_CTX *mem_ctx,
+ 				    bool authenticated,
+ 				    struct auth_user_info **_user_info);
+ 
++struct auth_user_info *auth_user_info_copy(TALLOC_CTX *mem_ctx,
++					   const struct auth_user_info *src);
++
+ NTSTATUS auth_convert_user_info_dc_saminfo6(TALLOC_CTX *mem_ctx,
+ 					   const struct auth_user_info_dc *user_info_dc,
+ 					   struct netr_SamInfo6 **_sam6);
+-- 
+2.17.0
+
+
+From 417e52e67a662903ee0585371bcb9507fe6f8d87 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Wed, 7 Mar 2018 00:21:13 +0100
+Subject: [PATCH 14/21] s3:auth: add auth3_user_info_dc_add_hints() and
+ auth3_session_info_create()
+
+These functions make it possible to construct a full auth_session_info
+from the information available from an auth_user_info_dc structure.
+
+This has all the logic from create_local_token() that is used
+to transform a auth_serversupplied_info to a full auth_session_info.
+
+In order to workarround the restriction that auth_user_info_dc
+doesn't contain hints for the unix token/name, we use
+the special S-1-5-88 (Unix_NFS) sids:
+
+ - S-1-5-88-1-Y gives the uid=Y
+ - S-1-5-88-2-Y gives the gid=Y
+ - S-1-5-88-3-Y gives flags=Y AUTH3_UNIX_HINT_*
+
+The currently implemented flags are:
+
+- AUTH3_UNIX_HINT_QUALIFIED_NAME
+  unix_name = DOMAIN+ACCOUNT
+
+- AUTH3_UNIX_HINT_ISLOLATED_NAME
+  unix_name = ACCOUNT
+
+- AUTH3_UNIX_HINT_DONT_TRANSLATE_FROM_SIDS
+  Don't translate the nt token SIDS into uid/gids
+  using sid mapping.
+
+- AUTH3_UNIX_HINT_DONT_TRANSLATE_TO_SIDS
+  Don't translate the unix token uid/gids to S-1-22-X-Y SIDS
+
+- AUTH3_UNIX_HINT_DONT_EXPAND_UNIX_GROUPS
+  The unix token won't get expanded gid values
+  from getgroups_unix_user()
+
+By using the hints it is possible to keep the current logic
+where an authentication backend provides uid/gid values and
+the unix name.
+
+Note the S-1-5-88-* SIDS never appear in the final security_token.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit af4bc135e486e17164da0ea918281fbf689892c3)
+(cherry picked from commit b8c518d57fc32f8daffb0d4798dc8f5de17c0150)
+---
+ source3/auth/auth_util.c | 552 +++++++++++++++++++++++++++++++++++++++
+ source3/auth/proto.h     |  32 +++
+ 2 files changed, 584 insertions(+)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index 2aa40388d14..9d6e8020d77 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -692,6 +692,558 @@ NTSTATUS create_local_token(TALLOC_CTX *mem_ctx,
+ 	return NT_STATUS_OK;
+ }
+ 
++NTSTATUS auth3_user_info_dc_add_hints(struct auth_user_info_dc *user_info_dc,
++				      uid_t uid,
++				      gid_t gid,
++				      uint32_t flags)
++{
++	uint32_t orig_num_sids = user_info_dc->num_sids;
++	struct dom_sid tmp_sid = { 0, };
++	NTSTATUS status;
++
++	/*
++	 * We add S-5-88-1-X in order to pass the uid
++	 * for the unix token.
++	 */
++	sid_compose(&tmp_sid,
++		    &global_sid_Unix_NFS_Users,
++		    (uint32_t)uid);
++	status = add_sid_to_array_unique(user_info_dc->sids,
++					 &tmp_sid,
++					 &user_info_dc->sids,
++					 &user_info_dc->num_sids);
++	if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(0, ("add_sid_to_array_unique failed: %s\n",
++			  nt_errstr(status)));
++		goto fail;
++	}
++
++	/*
++	 * We add S-5-88-2-X in order to pass the gid
++	 * for the unix token.
++	 */
++	sid_compose(&tmp_sid,
++		    &global_sid_Unix_NFS_Groups,
++		    (uint32_t)gid);
++	status = add_sid_to_array_unique(user_info_dc->sids,
++					 &tmp_sid,
++					 &user_info_dc->sids,
++					 &user_info_dc->num_sids);
++	if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(0, ("add_sid_to_array_unique failed: %s\n",
++			  nt_errstr(status)));
++		goto fail;
++	}
++
++	/*
++	 * We add S-5-88-3-X in order to pass some flags
++	 * (AUTH3_UNIX_HINT_*) to auth3_create_session_info().
++	 */
++	sid_compose(&tmp_sid,
++		    &global_sid_Unix_NFS_Mode,
++		    flags);
++	status = add_sid_to_array_unique(user_info_dc->sids,
++					 &tmp_sid,
++					 &user_info_dc->sids,
++					 &user_info_dc->num_sids);
++	if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(0, ("add_sid_to_array_unique failed: %s\n",
++			  nt_errstr(status)));
++		goto fail;
++	}
++
++	return NT_STATUS_OK;
++
++fail:
++	user_info_dc->num_sids = orig_num_sids;
++	return status;
++}
++
++NTSTATUS auth3_session_info_create(TALLOC_CTX *mem_ctx,
++				   const struct auth_user_info_dc *user_info_dc,
++				   const char *original_user_name,
++				   uint32_t session_info_flags,
++				   struct auth_session_info **session_info_out)
++{
++	TALLOC_CTX *frame = talloc_stackframe();
++	struct auth_session_info *session_info = NULL;
++	uid_t hint_uid = -1;
++	bool found_hint_uid = false;
++	uid_t hint_gid = -1;
++	bool found_hint_gid = false;
++	uint32_t hint_flags = 0;
++	bool found_hint_flags = false;
++	bool need_getpwuid = false;
++	struct unixid *ids = NULL;
++	uint32_t num_gids = 0;
++	gid_t *gids = NULL;
++	struct dom_sid tmp_sid = { 0, };
++	fstring tmp = { 0, };
++	NTSTATUS status;
++	size_t i;
++	bool ok;
++
++	*session_info_out = NULL;
++
++	if (user_info_dc->num_sids == 0) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_INVALID_TOKEN;
++	}
++
++	if (user_info_dc->info == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_INVALID_TOKEN;
++	}
++
++	if (user_info_dc->info->account_name == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_INVALID_TOKEN;
++	}
++
++	session_info = talloc_zero(mem_ctx, struct auth_session_info);
++	if (session_info == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_NO_MEMORY;
++	}
++	/* keep this under frame for easier cleanup */
++	talloc_reparent(mem_ctx, frame, session_info);
++
++	session_info->info = auth_user_info_copy(session_info,
++						 user_info_dc->info);
++	if (session_info->info == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	session_info->security_token = talloc_zero(session_info,
++						   struct security_token);
++	if (session_info->security_token == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	/*
++	 * Avoid a lot of reallocations and allocate what we'll
++	 * use in most cases.
++	 */
++	session_info->security_token->sids = talloc_zero_array(
++						session_info->security_token,
++						struct dom_sid,
++						user_info_dc->num_sids);
++	if (session_info->security_token->sids == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	for (i = PRIMARY_USER_SID_INDEX; i < user_info_dc->num_sids; i++) {
++		struct security_token *nt_token = session_info->security_token;
++		int cmp;
++
++		/*
++		 * S-1-5-88-X-Y sids are only used to give hints
++		 * to the unix token construction.
++		 *
++		 * S-1-5-88-1-Y gives the uid=Y
++		 * S-1-5-88-2-Y gives the gid=Y
++		 * S-1-5-88-3-Y gives flags=Y: AUTH3_UNIX_HINT_*
++		 */
++		cmp = dom_sid_compare_domain(&global_sid_Unix_NFS,
++					     &user_info_dc->sids[i]);
++		if (cmp == 0) {
++			bool match;
++			uint32_t hint = 0;
++
++			match = sid_peek_rid(&user_info_dc->sids[i], &hint);
++			if (!match) {
++				continue;
++			}
++
++			match = dom_sid_in_domain(&global_sid_Unix_NFS_Users,
++						  &user_info_dc->sids[i]);
++			if (match) {
++				if (found_hint_uid) {
++					TALLOC_FREE(frame);
++					return NT_STATUS_INVALID_TOKEN;
++				}
++				found_hint_uid = true;
++				hint_uid = (uid_t)hint;
++				continue;
++			}
++
++			match = dom_sid_in_domain(&global_sid_Unix_NFS_Groups,
++						  &user_info_dc->sids[i]);
++			if (match) {
++				if (found_hint_gid) {
++					TALLOC_FREE(frame);
++					return NT_STATUS_INVALID_TOKEN;
++				}
++				found_hint_gid = true;
++				hint_gid = (gid_t)hint;
++				continue;
++			}
++
++			match = dom_sid_in_domain(&global_sid_Unix_NFS_Mode,
++						  &user_info_dc->sids[i]);
++			if (match) {
++				if (found_hint_flags) {
++					TALLOC_FREE(frame);
++					return NT_STATUS_INVALID_TOKEN;
++				}
++				found_hint_flags = true;
++				hint_flags = hint;
++				continue;
++			}
++
++			continue;
++		}
++
++		status = add_sid_to_array_unique(nt_token->sids,
++						 &user_info_dc->sids[i],
++						 &nt_token->sids,
++						 &nt_token->num_sids);
++		if (!NT_STATUS_IS_OK(status)) {
++			TALLOC_FREE(frame);
++			return status;
++		}
++	}
++
++	/*
++	 * We need at least one usable SID
++	 */
++	if (session_info->security_token->num_sids == 0) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_INVALID_TOKEN;
++	}
++
++	/*
++	 * We need all tree hints: uid, gid, flags
++	 * or none of them.
++	 */
++	if (found_hint_uid || found_hint_gid || found_hint_flags) {
++		if (!found_hint_uid) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_INVALID_TOKEN;
++		}
++
++		if (!found_hint_gid) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_INVALID_TOKEN;
++		}
++
++		if (!found_hint_flags) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_INVALID_TOKEN;
++		}
++	}
++
++	if (session_info->info->authenticated) {
++		session_info_flags |= AUTH_SESSION_INFO_AUTHENTICATED;
++	}
++
++	status = finalize_local_nt_token(session_info->security_token,
++					 session_info_flags);
++	if (!NT_STATUS_IS_OK(status)) {
++		TALLOC_FREE(frame);
++		return status;
++	}
++
++	/*
++	 * unless set otherwise, the session key is the user session
++	 * key from the auth subsystem
++	 */
++	if (user_info_dc->user_session_key.length != 0) {
++		session_info->session_key = data_blob_dup_talloc(session_info,
++						user_info_dc->user_session_key);
++		if (session_info->session_key.data == NULL) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_NO_MEMORY;
++		}
++	}
++
++	if (!(session_info_flags & AUTH_SESSION_INFO_UNIX_TOKEN)) {
++		goto done;
++	}
++
++	session_info->unix_token = talloc_zero(session_info, struct security_unix_token);
++	if (session_info->unix_token == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_NO_MEMORY;
++	}
++	session_info->unix_token->uid = -1;
++	session_info->unix_token->gid = -1;
++
++	session_info->unix_info = talloc_zero(session_info, struct auth_user_info_unix);
++	if (session_info->unix_info == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	/* Convert the SIDs to uid/gids. */
++
++	ids = talloc_zero_array(frame, struct unixid,
++				session_info->security_token->num_sids);
++	if (ids == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	if (!(hint_flags & AUTH3_UNIX_HINT_DONT_TRANSLATE_FROM_SIDS)) {
++		ok = sids_to_unixids(session_info->security_token->sids,
++				     session_info->security_token->num_sids,
++				     ids);
++		if (!ok) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_NO_MEMORY;
++		}
++	}
++
++	if (found_hint_uid) {
++		session_info->unix_token->uid = hint_uid;
++	} else if (ids[0].type == ID_TYPE_UID) {
++		/*
++		 * The primary SID resolves to a UID only.
++		 */
++		session_info->unix_token->uid = ids[0].id;
++	} else if (ids[0].type == ID_TYPE_BOTH) {
++		/*
++		 * The primary SID resolves to a UID and GID,
++		 * use it as uid and add it as first element
++		 * to the groups array.
++		 */
++		session_info->unix_token->uid = ids[0].id;
++
++		ok = add_gid_to_array_unique(session_info->unix_token,
++					     session_info->unix_token->uid,
++					     &session_info->unix_token->groups,
++					     &session_info->unix_token->ngroups);
++		if (!ok) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_NO_MEMORY;
++		}
++	} else {
++		/*
++		 * It we can't get a uid, we can't imporsonate
++		 * the user.
++		 */
++		TALLOC_FREE(frame);
++		return NT_STATUS_INVALID_TOKEN;
++	}
++
++	if (found_hint_gid) {
++		session_info->unix_token->gid = hint_gid;
++	} else {
++		need_getpwuid = true;
++	}
++
++	if (hint_flags & AUTH3_UNIX_HINT_QUALIFIED_NAME) {
++		session_info->unix_info->unix_name =
++			talloc_asprintf(session_info->unix_info,
++					"%s%c%s",
++					session_info->info->domain_name,
++					*lp_winbind_separator(),
++					session_info->info->account_name);
++		if (session_info->unix_info->unix_name == NULL) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_NO_MEMORY;
++		}
++	} else if (hint_flags & AUTH3_UNIX_HINT_ISLOLATED_NAME) {
++		session_info->unix_info->unix_name =
++			talloc_strdup(session_info->unix_info,
++				      session_info->info->account_name);
++		if (session_info->unix_info->unix_name == NULL) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_NO_MEMORY;
++		}
++	} else {
++		need_getpwuid = true;
++	}
++
++	if (need_getpwuid) {
++		struct passwd *pwd = NULL;
++
++		/*
++		 * Ask the system for the primary gid
++		 * and the real unix name.
++		 */
++		pwd = getpwuid_alloc(frame, session_info->unix_token->uid);
++		if (pwd == NULL) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_INVALID_TOKEN;
++		}
++		if (!found_hint_gid) {
++			session_info->unix_token->gid = pwd->pw_gid;
++		}
++
++		session_info->unix_info->unix_name =
++			talloc_strdup(session_info->unix_info, pwd->pw_name);
++		if (session_info->unix_info->unix_name == NULL) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_NO_MEMORY;
++		}
++
++		TALLOC_FREE(pwd);
++	}
++
++	ok = add_gid_to_array_unique(session_info->unix_token,
++				     session_info->unix_token->gid,
++				     &session_info->unix_token->groups,
++				     &session_info->unix_token->ngroups);
++	if (!ok) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	/* This is a potentially untrusted username for use in %U */
++	alpha_strcpy(tmp, original_user_name, ". _-$", sizeof(tmp));
++	session_info->unix_info->sanitized_username =
++				talloc_strdup(session_info->unix_info, tmp);
++	if (session_info->unix_info->sanitized_username == NULL) {
++		TALLOC_FREE(frame);
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	for (i=0; i < session_info->security_token->num_sids; i++) {
++
++		if (ids[i].type != ID_TYPE_GID &&
++		    ids[i].type != ID_TYPE_BOTH) {
++			struct security_token *nt_token =
++				session_info->security_token;
++
++			DEBUG(10, ("Could not convert SID %s to gid, "
++				   "ignoring it\n",
++				   sid_string_dbg(&nt_token->sids[i])));
++			continue;
++		}
++
++		ok = add_gid_to_array_unique(session_info->unix_token,
++					     ids[i].id,
++					     &session_info->unix_token->groups,
++					     &session_info->unix_token->ngroups);
++		if (!ok) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_NO_MEMORY;
++		}
++	}
++	TALLOC_FREE(ids);
++
++	/*
++	 * Now we must get any groups this user has been
++	 * added to in /etc/group and merge them in.
++	 * This has to be done in every code path
++	 * that creates an NT token, as remote users
++	 * may have been added to the local /etc/group
++	 * database. Tokens created merely from the
++	 * info3 structs (via the DC or via the krb5 PAC)
++	 * won't have these local groups. Note the
++	 * groups added here will only be UNIX groups
++	 * (S-1-22-2-XXXX groups) as getgroups_unix_user()
++	 * turns off winbindd before calling getgroups().
++	 *
++	 * NB. This is duplicating work already
++	 * done in the 'unix_user:' case of
++	 * create_token_from_sid() but won't
++	 * do anything other than be inefficient
++	 * in that case.
++	 */
++	if (!(hint_flags & AUTH3_UNIX_HINT_DONT_EXPAND_UNIX_GROUPS)) {
++		ok = getgroups_unix_user(frame,
++					 session_info->unix_info->unix_name,
++					 session_info->unix_token->gid,
++					 &gids, &num_gids);
++		if (!ok) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_INVALID_TOKEN;
++		}
++	}
++
++	for (i=0; i < num_gids; i++) {
++
++		ok = add_gid_to_array_unique(session_info->unix_token,
++					     gids[i],
++					     &session_info->unix_token->groups,
++					     &session_info->unix_token->ngroups);
++		if (!ok) {
++			TALLOC_FREE(frame);
++			return NT_STATUS_NO_MEMORY;
++		}
++	}
++	TALLOC_FREE(gids);
++
++	if (hint_flags & AUTH3_UNIX_HINT_DONT_TRANSLATE_TO_SIDS) {
++		/*
++		 * We should not translate the unix token uid/gids
++		 * to S-1-22-X-Y SIDs.
++		 */
++		goto done;
++	}
++
++	/*
++	 * Add the "Unix Group" SID for each gid to catch mapped groups
++	 * and their Unix equivalent.  This is to solve the backwards
++	 * compatibility problem of 'valid users = +ntadmin' where
++	 * ntadmin has been paired with "Domain Admins" in the group
++	 * mapping table.  Otherwise smb.conf would need to be changed
++	 * to 'valid user = "Domain Admins"'.  --jerry
++	 *
++	 * For consistency we also add the "Unix User" SID,
++	 * so that the complete unix token is represented within
++	 * the nt token.
++	 */
++
++	uid_to_unix_users_sid(session_info->unix_token->uid, &tmp_sid);
++	status = add_sid_to_array_unique(session_info->security_token, &tmp_sid,
++					 &session_info->security_token->sids,
++					 &session_info->security_token->num_sids);
++	if (!NT_STATUS_IS_OK(status)) {
++		TALLOC_FREE(frame);
++		return status;
++	}
++
++	gid_to_unix_groups_sid(session_info->unix_token->gid, &tmp_sid);
++	status = add_sid_to_array_unique(session_info->security_token, &tmp_sid,
++					 &session_info->security_token->sids,
++					 &session_info->security_token->num_sids);
++	if (!NT_STATUS_IS_OK(status)) {
++		TALLOC_FREE(frame);
++		return status;
++	}
++
++	for (i=0; i < session_info->unix_token->ngroups; i++ ) {
++		struct security_token *nt_token = session_info->security_token;
++
++		gid_to_unix_groups_sid(session_info->unix_token->groups[i],
++				       &tmp_sid);
++		status = add_sid_to_array_unique(nt_token->sids,
++						 &tmp_sid,
++						 &nt_token->sids,
++						 &nt_token->num_sids);
++		if (!NT_STATUS_IS_OK(status)) {
++			TALLOC_FREE(frame);
++			return status;
++		}
++	}
++
++done:
++	security_token_debug(DBGC_AUTH, 10, session_info->security_token);
++	if (session_info->unix_token != NULL) {
++		debug_unix_user_token(DBGC_AUTH, 10,
++				      session_info->unix_token->uid,
++				      session_info->unix_token->gid,
++				      session_info->unix_token->ngroups,
++				      session_info->unix_token->groups);
++	}
++
++	status = log_nt_token(session_info->security_token);
++	if (!NT_STATUS_IS_OK(status)) {
++		TALLOC_FREE(frame);
++		return status;
++	}
++
++	*session_info_out = talloc_move(mem_ctx, &session_info);
++	TALLOC_FREE(frame);
++	return NT_STATUS_OK;
++}
++
+ /***************************************************************************
+  Make (and fill) a server_info struct from a 'struct passwd' by conversion
+  to a struct samu
+diff --git a/source3/auth/proto.h b/source3/auth/proto.h
+index d3403f1a929..84e20093218 100644
+--- a/source3/auth/proto.h
++++ b/source3/auth/proto.h
+@@ -225,6 +225,38 @@ NTSTATUS create_local_token(TALLOC_CTX *mem_ctx,
+ 			    DATA_BLOB *session_key,
+ 			    const char *smb_name,
+ 			    struct auth_session_info **session_info_out);
++
++/*
++ * The unix name should be constructed as DOMAIN+ACCOUNT,
++ * while '+' will be the "winbind separator" character.
++ */
++#define AUTH3_UNIX_HINT_QUALIFIED_NAME             0x00000001
++/*
++ * The unix name will be just ACCOUNT
++ */
++#define AUTH3_UNIX_HINT_ISLOLATED_NAME             0x00000002
++/*
++ * Don't translate the nt token SIDS into uid/gids
++ */
++#define AUTH3_UNIX_HINT_DONT_TRANSLATE_FROM_SIDS   0x00000004
++/*
++ * Don't translate the unix token uid/gids to S-1-22-X-Y SIDS
++ */
++#define AUTH3_UNIX_HINT_DONT_TRANSLATE_TO_SIDS     0x00000008
++/*
++ * The unix token won't get expanded gid values
++ * from getgroups_unix_user()
++ */
++#define AUTH3_UNIX_HINT_DONT_EXPAND_UNIX_GROUPS    0x00000010
++NTSTATUS auth3_user_info_dc_add_hints(struct auth_user_info_dc *user_info_dc,
++				      uid_t uid,
++				      gid_t gid,
++				      uint32_t flags);
++NTSTATUS auth3_session_info_create(TALLOC_CTX *mem_ctx,
++				   const struct auth_user_info_dc *user_info_dc,
++				   const char *original_user_name,
++				   uint32_t session_info_flags,
++				   struct auth_session_info **session_info_out);
+ NTSTATUS create_token_from_username(TALLOC_CTX *mem_ctx, const char *username,
+ 				    bool is_guest,
+ 				    uid_t *uid, gid_t *gid,
+-- 
+2.17.0
+
+
+From 92c6d4d81f801cced97adce4e5a054d226876607 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Wed, 7 Mar 2018 00:51:51 +0100
+Subject: [PATCH 15/21] s3:auth: base make_new_session_info_system() on
+ auth_system_user_info_dc() and auth3_create_session_info()
+
+The changes in the resulting token look like this:
+
+           unix_token               : *
+               unix_token: struct security_unix_token
+                   uid                      : 0x0000000000000000 (0)
+                   gid                      : 0x0000000000000000 (0)
+-                  ngroups                  : 0x00000000 (0)
+-                  groups: ARRAY(0)
++                  ngroups                  : 0x00000001 (1)
++                  groups: ARRAY(1)
++                      groups                   : 0x0000000000000000 (0)
+
+...
+
+                   domain_name              : *
+                       domain_name              : 'NT AUTHORITY'
+                   dns_domain_name          : NULL
+-                  full_name                : NULL
+-                  logon_script             : NULL
+-                  profile_path             : NULL
+-                  home_directory           : NULL
+-                  home_drive               : NULL
+-                  logon_server             : NULL
++                  full_name                : *
++                      full_name                : 'System'
++                  logon_script             : *
++                      logon_script             : ''
++                  profile_path             : *
++                      profile_path             : ''
++                  home_directory           : *
++                      home_directory           : ''
++                  home_drive               : *
++                      home_drive               : ''
++                  logon_server             : *
++                      logon_server             : 'SLOWSERVER'
+                   last_logon               : NTTIME(0)
+                   last_logoff              : NTTIME(0)
+                   acct_expiry              : NTTIME(0)
+                   last_password_change     : NTTIME(0)
+                   allow_password_change    : NTTIME(0)
+                   force_password_change    : NTTIME(0)
+                   logon_count              : 0x0000 (0)
+                   bad_password_count       : 0x0000 (0)
+-                  acct_flags               : 0x00000000 (0)
++                  acct_flags               : 0x00000010 (16)
+                   authenticated            : 0x01 (1)
+           unix_info                : *
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(similar to commit e8402ec0486ced6ac2adb640c61a9e5abc77d4e4)
+(cherry picked from commit 19026525a2b649f282bb11d55ae1eb5807fc4a3a)
+---
+ source3/auth/auth_util.c | 123 ++++++++++++++-------------------------
+ 1 file changed, 43 insertions(+), 80 deletions(-)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index 9d6e8020d77..7fc3da22317 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -36,6 +36,7 @@
+ #include "../librpc/gen_ndr/idmap.h"
+ #include "lib/param/loadparm.h"
+ #include "../lib/tsocket/tsocket.h"
++#include "source4/auth/auth.h"
+ 
+ #undef DBGC_CLASS
+ #define DBGC_CLASS DBGC_AUTH
+@@ -1295,31 +1296,6 @@ done:
+ 	return status;
+ }
+ 
+-static NTSTATUS get_system_info3(TALLOC_CTX *mem_ctx,
+-				 struct netr_SamInfo3 *info3)
+-{
+-	NTSTATUS status;
+-
+-	/* Set account name */
+-	init_lsa_String(&info3->base.account_name, "SYSTEM");
+-
+-	/* Set domain name */
+-	init_lsa_StringLarge(&info3->base.logon_domain, "NT AUTHORITY");
+-
+-
+-	status = dom_sid_split_rid(mem_ctx, &global_sid_System,
+-				   &info3->base.domain_sid,
+-				   &info3->base.rid);
+-	if (!NT_STATUS_IS_OK(status)) {
+-		return status;
+-	}
+-
+-	/* Primary gid is the same */
+-	info3->base.primary_gid = info3->base.rid;
+-
+-	return NT_STATUS_OK;
+-}
+-
+ static NTSTATUS get_guest_info3(TALLOC_CTX *mem_ctx,
+ 				struct netr_SamInfo3 *info3)
+ {
+@@ -1448,80 +1424,67 @@ done:
+ static NTSTATUS make_new_session_info_system(TALLOC_CTX *mem_ctx,
+ 					    struct auth_session_info **session_info)
+ {
++	TALLOC_CTX *frame = talloc_stackframe();
++	struct auth_user_info_dc *user_info_dc = NULL;
++	uid_t uid = -1;
++	gid_t gid = -1;
++	uint32_t hint_flags = 0;
++	uint32_t session_info_flags = 0;
+ 	NTSTATUS status;
+-	struct auth_serversupplied_info *server_info;
+-	TALLOC_CTX *tmp_ctx;
+-
+-	tmp_ctx = talloc_stackframe();
+-	if (tmp_ctx == NULL) {
+-		return NT_STATUS_NO_MEMORY;
+-	}
+-
+-	server_info = make_server_info(tmp_ctx);
+-	if (!server_info) {
+-		status = NT_STATUS_NO_MEMORY;
+-		DEBUG(0, ("failed making server_info\n"));
+-		goto done;
+-	}
+ 
+-	server_info->info3 = talloc_zero(server_info, struct netr_SamInfo3);
+-	if (!server_info->info3) {
+-		status = NT_STATUS_NO_MEMORY;
+-		DEBUG(0, ("talloc failed setting info3\n"));
+-		goto done;
+-	}
+-
+-	status = get_system_info3(server_info, server_info->info3);
++	status = auth_system_user_info_dc(frame, lp_netbios_name(),
++					  &user_info_dc);
+ 	if (!NT_STATUS_IS_OK(status)) {
+-		DEBUG(0, ("Failed creating system info3 with %s\n",
++		DEBUG(0, ("auth_system_user_info_dc failed: %s\n",
+ 			  nt_errstr(status)));
+ 		goto done;
+ 	}
+ 
+-	server_info->utok.uid = sec_initial_uid();
+-	server_info->utok.gid = sec_initial_gid();
+-	server_info->unix_name = talloc_asprintf(server_info,
+-						 "NT AUTHORITY%cSYSTEM",
+-						 *lp_winbind_separator());
+-
+-	if (!server_info->unix_name) {
+-		status = NT_STATUS_NO_MEMORY;
+-		DEBUG(0, ("talloc_asprintf failed setting unix_name\n"));
+-		goto done;
+-	}
++	/*
++	 * Just get the initial uid/gid
++	 * and don't expand the unix groups.
++	 */
++	uid = sec_initial_uid();
++	gid = sec_initial_gid();
++	hint_flags |= AUTH3_UNIX_HINT_DONT_EXPAND_UNIX_GROUPS;
+ 
+-	server_info->security_token = talloc_zero(server_info, struct security_token);
+-	if (!server_info->security_token) {
+-		status = NT_STATUS_NO_MEMORY;
+-		DEBUG(0, ("talloc failed setting security token\n"));
+-		goto done;
+-	}
++	/*
++	 * Also avoid sid mapping to gids,
++	 * as well as adding the unix_token uid/gids as
++	 * S-1-22-X-Y SIDs to the nt token.
++	 */
++	hint_flags |= AUTH3_UNIX_HINT_DONT_TRANSLATE_FROM_SIDS;
++	hint_flags |= AUTH3_UNIX_HINT_DONT_TRANSLATE_TO_SIDS;
+ 
+-	status = add_sid_to_array_unique(server_info->security_token->sids,
+-					 &global_sid_System,
+-					 &server_info->security_token->sids,
+-					 &server_info->security_token->num_sids);
++	/*
++	 * The unix name will be "NT AUTHORITY+SYSTEM",
++	 * where '+' is the "winbind separator" character.
++	 */
++	hint_flags |= AUTH3_UNIX_HINT_QUALIFIED_NAME;
++	status = auth3_user_info_dc_add_hints(user_info_dc,
++					      uid,
++					      gid,
++					      hint_flags);
+ 	if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(0, ("auth3_user_info_dc_add_hints failed: %s\n",
++			  nt_errstr(status)));
+ 		goto done;
+ 	}
+ 
+-	/* SYSTEM has all privilages */
+-	server_info->security_token->privilege_mask = ~0;
+-
+-	/* Now turn the server_info into a session_info with the full token etc */
+-	status = create_local_token(mem_ctx, server_info, NULL, "SYSTEM", session_info);
+-	talloc_free(server_info);
+-
++	session_info_flags |= AUTH_SESSION_INFO_SIMPLE_PRIVILEGES;
++	session_info_flags |= AUTH_SESSION_INFO_UNIX_TOKEN;
++	status = auth3_session_info_create(mem_ctx, user_info_dc,
++					   user_info_dc->info->account_name,
++					   session_info_flags,
++					   session_info);
+ 	if (!NT_STATUS_IS_OK(status)) {
+-		DEBUG(0, ("create_local_token failed: %s\n",
++		DEBUG(0, ("auth3_session_info_create failed: %s\n",
+ 			  nt_errstr(status)));
+ 		goto done;
+ 	}
+ 
+-	talloc_steal(mem_ctx, *session_info);
+-
+ done:
+-	TALLOC_FREE(tmp_ctx);
++	TALLOC_FREE(frame);
+ 	return status;
+ }
+ 
+-- 
+2.17.0
+
+
+From c8e19cd979f18eba054b51664d2206493ed8d5e2 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Fri, 2 Mar 2018 17:07:11 +0100
+Subject: [PATCH 16/21] s3:auth: pass the whole auth_session_info from
+ copy_session_info_serverinfo_guest() to create_local_token()
+
+We only need to adjust sanitized_username in order to keep the same behaviour.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit a2a289d0446fedb4ea40834b5b5b190fdca30906)
+(cherry picked from commit c3fdc6157377e71cf354fae5b59b823a4ebaa0eb)
+---
+ source3/auth/auth_util.c | 51 +++++++++++++++++-----------------------
+ source3/include/auth.h   |  5 ++--
+ 2 files changed, 23 insertions(+), 33 deletions(-)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index 7fc3da22317..a151ac13724 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -500,6 +500,26 @@ NTSTATUS create_local_token(TALLOC_CTX *mem_ctx,
+ 		return NT_STATUS_LOGON_FAILURE;
+ 	}
+ 
++	if (server_info->cached_session_info != NULL) {
++		session_info = copy_session_info(mem_ctx,
++				server_info->cached_session_info);
++		if (session_info == NULL) {
++			return NT_STATUS_NO_MEMORY;
++		}
++
++		/* This is a potentially untrusted username for use in %U */
++		alpha_strcpy(tmp, smb_username, ". _-$", sizeof(tmp));
++		session_info->unix_info->sanitized_username =
++				talloc_strdup(session_info->unix_info, tmp);
++		if (session_info->unix_info->sanitized_username == NULL) {
++			TALLOC_FREE(session_info);
++			return NT_STATUS_NO_MEMORY;
++		}
++
++		*session_info_out = session_info;
++		return NT_STATUS_OK;
++	}
++
+ 	session_info = talloc_zero(mem_ctx, struct auth_session_info);
+ 	if (!session_info) {
+ 		return NT_STATUS_NO_MEMORY;
+@@ -554,30 +574,6 @@ NTSTATUS create_local_token(TALLOC_CTX *mem_ctx,
+ 		return status;
+ 	}
+ 
+-	if (server_info->security_token) {
+-		/* Just copy the token, it has already been finalised
+-		 * (nasty hack to support a cached guest/system session_info
+-		 */
+-
+-		session_info->security_token = dup_nt_token(session_info, server_info->security_token);
+-		if (!session_info->security_token) {
+-			TALLOC_FREE(session_info);
+-			return NT_STATUS_NO_MEMORY;
+-		}
+-
+-		session_info->unix_token->ngroups = server_info->utok.ngroups;
+-		if (server_info->utok.ngroups != 0) {
+-			session_info->unix_token->groups = (gid_t *)talloc_memdup(
+-				session_info->unix_token, server_info->utok.groups,
+-				sizeof(gid_t)*session_info->unix_token->ngroups);
+-		} else {
+-			session_info->unix_token->groups = NULL;
+-		}
+-
+-		*session_info_out = session_info;
+-		return NT_STATUS_OK;
+-	}
+-
+ 	/*
+ 	 * If winbind is not around, we can not make much use of the SIDs the
+ 	 * domain controller provided us with. Likewise if the user name was
+@@ -1586,12 +1582,6 @@ static struct auth_serversupplied_info *copy_session_info_serverinfo_guest(TALLO
+ 	 * to take the wrong path */
+ 	SMB_ASSERT(src->security_token);
+ 
+-	dst->security_token = dup_nt_token(dst, src->security_token);
+-	if (!dst->security_token) {
+-		TALLOC_FREE(dst);
+-		return NULL;
+-	}
+-
+ 	dst->session_key = data_blob_talloc( dst, src->session_key.data,
+ 						src->session_key.length);
+ 
+@@ -1612,6 +1602,7 @@ static struct auth_serversupplied_info *copy_session_info_serverinfo_guest(TALLO
+ 		return NULL;
+ 	}
+ 
++	dst->cached_session_info = src;
+ 	return dst;
+ }
+ 
+diff --git a/source3/include/auth.h b/source3/include/auth.h
+index d3055373964..31a1f201835 100644
+--- a/source3/include/auth.h
++++ b/source3/include/auth.h
+@@ -34,15 +34,14 @@ struct auth_serversupplied_info {
+ 	struct security_unix_token utok;
+ 
+ 	/*
+-	 * NT group information taken from the info3 structure
++	 * A complete auth_session_info
+ 	 *
+ 	 * This is not normally filled in, during the typical
+ 	 * authentication process.  If filled in, it has already been
+ 	 * finalised by a nasty hack to support a cached guest/system
+ 	 * session_info
+ 	 */
+-
+-	struct security_token *security_token;
++	const struct auth_session_info *cached_session_info;
+ 
+ 	/* These are the intermediate session keys, as provided by a
+ 	 * NETLOGON server and used by NTLMSSP to negotiate key
+-- 
+2.17.0
+
+
+From 86475067dbe32ea21081d67115035a62b9802e1c Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Fri, 2 Mar 2018 14:39:44 +0100
+Subject: [PATCH 17/21] s3:auth: add make_{server,session}_info_anonymous()
+
+It's important to have them separated from make_{server,session}_info_guest(),
+because there's a fundamental difference between anonymous (the client requested
+no authentication) and guest (the server lies about the authentication failure).
+
+The following is the difference between guest and anonymous token:
+
+             security_token: struct security_token
+-                num_sids                 : 0x0000000a (10)
+-                sids: ARRAY(10)
+-                    sids                     : S-1-5-21-3793881525-3372187982-3724979742-501
+-                    sids                     : S-1-5-21-3793881525-3372187982-3724979742-514
+-                    sids                     : S-1-22-2-65534
+-                    sids                     : S-1-22-2-65533
++                num_sids                 : 0x00000009 (9)
++                sids: ARRAY(9)
++                    sids                     : S-1-5-7
+                     sids                     : S-1-1-0
+                     sids                     : S-1-5-2
+-                    sids                     : S-1-5-32-546
+                     sids                     : S-1-22-1-65533
++                    sids                     : S-1-22-2-65534
++                    sids                     : S-1-22-2-100004
+                     sids                     : S-1-22-2-100002
+                     sids                     : S-1-22-2-100003
++                    sids                     : S-1-22-2-65533
+                 privilege_mask           : 0x0000000000000000 (0)
+
+...
+
+         unix_token               : *
+             unix_token: struct security_unix_token
+                 uid                      : 0x000000000000fffd (65533)
+                 gid                      : 0x000000000000fffe (65534)
+-                ngroups                  : 0x00000004 (4)
+-                groups: ARRAY(4)
++                ngroups                  : 0x00000005 (5)
++                groups: ARRAY(5)
+                     groups                   : 0x000000000000fffe (65534)
+-                    groups                   : 0x000000000000fffd (65533)
++                    groups                   : 0x00000000000186a4 (100004)
+                     groups                   : 0x00000000000186a2 (100002)
+                     groups                   : 0x00000000000186a3 (100003)
++                    groups                   : 0x000000000000fffd (65533)
+
+             info: struct auth_user_info
+                 account_name             : *
+-                    account_name             : 'nobody'
++                    account_name             : 'ANONYMOUS LOGON'
+                 user_principal_name      : NULL
+                 user_principal_constructed: 0x00 (0)
+                 domain_name              : *
+-                    domain_name              : 'SAMBA-TEST'
++                    domain_name              : 'NT AUTHORITY'
+                 dns_domain_name          : NULL
+-                full_name                : NULL
+-                logon_script             : NULL
+-                profile_path             : NULL
+-                home_directory           : NULL
+-                home_drive               : NULL
+-                logon_server             : NULL
++                full_name                : *
++                    full_name                : 'Anonymous Logon'
++                logon_script             : *
++                    logon_script             : ''
++                profile_path             : *
++                    profile_path             : ''
++                home_directory           : *
++                    home_directory           : ''
++                home_drive               : *
++                    home_drive               : ''
++                logon_server             : *
++                    logon_server             : 'LOCALNT4DC2'
+                 last_logon               : NTTIME(0)
+                 last_logoff              : NTTIME(0)
+                 acct_expiry              : NTTIME(0)
+                 last_password_change     : NTTIME(0)
+                 allow_password_change    : NTTIME(0)
+                 force_password_change    : NTTIME(0)
+                 logon_count              : 0x0000 (0)
+                 bad_password_count       : 0x0000 (0)
+-                acct_flags               : 0x00000000 (0)
++                acct_flags               : 0x00000010 (16)
+                 authenticated            : 0x00 (0)
+             security_token: struct security_token
+                 num_sids                 : 0x00000006 (6)
+                 sids: ARRAY(6)
++                    sids                     : S-1-5-7
++                    sids                     : S-1-1-0
++                    sids                     : S-1-5-2
+                     sids                     : S-1-22-1-65533
+                     sids                     : S-1-22-2-65534
+                     sids                     : S-1-22-2-65533
+-                    sids                     : S-1-1-0
+-                    sids                     : S-1-5-2
+-                    sids                     : S-1-5-32-546
+                 privilege_mask           : 0x0000000000000000 (0)
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+
+(similar to commit 6afb6b67a198c88ab8fa3fee931729c43605716d)
+
+(cherry picked from commit 8f69498ab6fa85dc3d23a1453224a654a9bedead)
+---
+ source3/auth/auth_util.c | 143 ++++++++++++++++++++++++++++++++++++++-
+ source3/auth/proto.h     |   4 ++
+ 2 files changed, 146 insertions(+), 1 deletion(-)
+
+diff --git a/source3/auth/auth_util.c b/source3/auth/auth_util.c
+index a151ac13724..a1dde2cc7be 100644
+--- a/source3/auth/auth_util.c
++++ b/source3/auth/auth_util.c
+@@ -1484,6 +1484,87 @@ done:
+ 	return status;
+ }
+ 
++static NTSTATUS make_new_session_info_anonymous(TALLOC_CTX *mem_ctx,
++					struct auth_session_info **session_info)
++{
++	TALLOC_CTX *frame = talloc_stackframe();
++	const char *guest_account = lp_guest_account();
++	struct auth_user_info_dc *user_info_dc = NULL;
++	struct passwd *pwd = NULL;
++	uint32_t hint_flags = 0;
++	uint32_t session_info_flags = 0;
++	NTSTATUS status;
++
++	/*
++	 * We use the guest account for the unix token
++	 * while we use a true anonymous nt token.
++	 *
++	 * It's very important to have a separate
++	 * nt token for anonymous.
++	 */
++
++	pwd = Get_Pwnam_alloc(frame, guest_account);
++	if (pwd == NULL) {
++		DBG_ERR("Unable to locate guest account [%s]!\n",
++			guest_account);
++		status = NT_STATUS_NO_SUCH_USER;
++		goto done;
++	}
++
++	status = auth_anonymous_user_info_dc(frame, lp_netbios_name(),
++					     &user_info_dc);
++	if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(0, ("auth_anonymous_user_info_dc failed: %s\n",
++			  nt_errstr(status)));
++		goto done;
++	}
++
++	/*
++	 * Note we don't pass AUTH3_UNIX_HINT_QUALIFIED_NAME
++	 * nor AUTH3_UNIX_HINT_ISOLATED_NAME here
++	 * as we want the unix name be found by getpwuid_alloc().
++	 */
++
++	status = auth3_user_info_dc_add_hints(user_info_dc,
++					      pwd->pw_uid,
++					      pwd->pw_gid,
++					      hint_flags);
++	if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(0, ("auth3_user_info_dc_add_hints failed: %s\n",
++			  nt_errstr(status)));
++		goto done;
++	}
++
++	/*
++	 * In future we may want to remove
++	 * AUTH_SESSION_INFO_DEFAULT_GROUPS.
++	 *
++	 * Similar to Windows with EveryoneIncludesAnonymous
++	 * and RestrictAnonymous.
++	 *
++	 * We may introduce AUTH_SESSION_INFO_ANON_WORLD...
++	 *
++	 * But for this is required to keep the existing tests
++	 * working.
++	 */
++	session_info_flags |= AUTH_SESSION_INFO_DEFAULT_GROUPS;
++	session_info_flags |= AUTH_SESSION_INFO_SIMPLE_PRIVILEGES;
++	session_info_flags |= AUTH_SESSION_INFO_UNIX_TOKEN;
++	status = auth3_session_info_create(mem_ctx, user_info_dc,
++					   "",
++					   session_info_flags,
++					   session_info);
++	if (!NT_STATUS_IS_OK(status)) {
++		DEBUG(0, ("auth3_session_info_create failed: %s\n",
++			  nt_errstr(status)));
++		goto done;
++	}
++
++done:
++	TALLOC_FREE(frame);
++	return status;
++}
++
+ /****************************************************************************
+   Fake a auth_session_info just from a username (as a
+   session_info structure, with create_local_token() already called on
+@@ -1661,15 +1742,30 @@ bool session_info_set_session_key(struct auth_session_info *info,
+ }
+ 
+ static struct auth_session_info *guest_info = NULL;
++static struct auth_session_info *anonymous_info = NULL;
+ 
+ static struct auth_serversupplied_info *guest_server_info = NULL;
+ 
+ bool init_guest_info(void)
+ {
++	NTSTATUS status;
++
+ 	if (guest_info != NULL)
+ 		return true;
+ 
+-	return NT_STATUS_IS_OK(make_new_session_info_guest(&guest_info, &guest_server_info));
++	status = make_new_session_info_guest(&guest_info,
++					     &guest_server_info);
++	if (!NT_STATUS_IS_OK(status)) {
++		return false;
++	}
++
++	status = make_new_session_info_anonymous(NULL,
++						 &anonymous_info);
++	if (!NT_STATUS_IS_OK(status)) {
++		return false;
++	}
++
++	return true;
+ }
+ 
+ NTSTATUS make_server_info_guest(TALLOC_CTX *mem_ctx,
+@@ -1690,6 +1786,51 @@ NTSTATUS make_session_info_guest(TALLOC_CTX *mem_ctx,
+ 	return (*session_info != NULL) ? NT_STATUS_OK : NT_STATUS_NO_MEMORY;
+ }
+ 
++NTSTATUS make_server_info_anonymous(TALLOC_CTX *mem_ctx,
++				    struct auth_serversupplied_info **server_info)
++{
++	if (anonymous_info == NULL) {
++		return NT_STATUS_UNSUCCESSFUL;
++	}
++
++	/*
++	 * This is trickier than it would appear to need to be because
++	 * we are trying to avoid certain costly operations when the
++	 * structure is converted to a 'auth_session_info' again in
++	 * create_local_token()
++	 *
++	 * We use a guest server_info, but with the anonymous session info,
++	 * which means create_local_token() will return a copy
++	 * of the anonymous token.
++	 *
++	 * The server info is just used as legacy in order to
++	 * keep existing code working. Maybe some debug messages
++	 * will still refer to guest instead of anonymous.
++	 */
++	*server_info = copy_session_info_serverinfo_guest(mem_ctx, anonymous_info,
++							  guest_server_info);
++	if (*server_info == NULL) {
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	return NT_STATUS_OK;
++}
++
++NTSTATUS make_session_info_anonymous(TALLOC_CTX *mem_ctx,
++				     struct auth_session_info **session_info)
++{
++	if (anonymous_info == NULL) {
++		return NT_STATUS_UNSUCCESSFUL;
++	}
++
++	*session_info = copy_session_info(mem_ctx, anonymous_info);
++	if (*session_info == NULL) {
++		return NT_STATUS_NO_MEMORY;
++	}
++
++	return NT_STATUS_OK;
++}
++
+ static struct auth_session_info *system_info = NULL;
+ 
+ NTSTATUS init_system_session_info(void)
+diff --git a/source3/auth/proto.h b/source3/auth/proto.h
+index 84e20093218..0ce34742ab6 100644
+--- a/source3/auth/proto.h
++++ b/source3/auth/proto.h
+@@ -284,6 +284,10 @@ NTSTATUS make_server_info_guest(TALLOC_CTX *mem_ctx,
+ 				struct auth_serversupplied_info **server_info);
+ NTSTATUS make_session_info_guest(TALLOC_CTX *mem_ctx,
+ 				struct auth_session_info **server_info);
++NTSTATUS make_server_info_anonymous(TALLOC_CTX *mem_ctx,
++				    struct auth_serversupplied_info **server_info);
++NTSTATUS make_session_info_anonymous(TALLOC_CTX *mem_ctx,
++				     struct auth_session_info **psession_info);
+ NTSTATUS make_session_info_system(TALLOC_CTX *mem_ctx,
+ 				 struct auth_session_info **session_info);
+ const struct auth_session_info *get_session_info_system(void);
+-- 
+2.17.0
+
+
+From 001dcfa09cbe00feaed7be6355e63cd44d4d7cfd Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Fri, 2 Mar 2018 14:40:19 +0100
+Subject: [PATCH 18/21] s3:rpc_server: make use of
+ make_session_info_anonymous()
+
+For unauthenticated connections we should default to a
+session info with an anonymous nt token.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 0ee9a550944034718ea188b277cca4b6fc5fbc5c)
+(cherry picked from commit 47b13364bed551fb9480ff8ac500d6251fae7b72)
+---
+ source3/rpc_server/rpc_server.c | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/source3/rpc_server/rpc_server.c b/source3/rpc_server/rpc_server.c
+index e15cd205cdc..4f196dec76e 100644
+--- a/source3/rpc_server/rpc_server.c
++++ b/source3/rpc_server/rpc_server.c
+@@ -1104,14 +1104,11 @@ void dcerpc_ncacn_accept(struct tevent_context *ev_ctx,
+ 	}
+ 
+ 	if (ncacn_conn->session_info == NULL) {
+-		/*
+-		 * TODO: use auth_anonymous_session_info() here?
+-		 */
+-		status = make_session_info_guest(ncacn_conn,
+-						 &ncacn_conn->session_info);
++		status = make_session_info_anonymous(ncacn_conn,
++						     &ncacn_conn->session_info);
+ 		if (!NT_STATUS_IS_OK(status)) {
+ 			DEBUG(2, ("Failed to create "
+-				  "make_session_info_guest - %s\n",
++				  "make_session_info_anonymous - %s\n",
+ 				  nt_errstr(status)));
+ 			talloc_free(ncacn_conn);
+ 			return;
+-- 
+2.17.0
+
+
+From 825ec4ad86285315a5ff3285c33ca7c876dc18a8 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Fri, 2 Mar 2018 14:40:19 +0100
+Subject: [PATCH 19/21] s3:auth: make use of
+ make_{server,session}_info_anonymous()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+It's important to have them separated from make_{server,session}_info_guest(),
+because there's a fundamental difference between anonymous (the client requested
+no authentication) and guest (the server lies about the authentication failure).
+
+When it's really an anonymous connection, we should reflect that in the
+resulting session info.
+
+This should fix a problem where Windows 10 tries to join
+a Samba hosted NT4 domain and has SMB2/3 enabled.
+
+We no longer return SMB_SETUP_GUEST or SMB2_SESSION_FLAG_IS_GUEST
+for true anonymous connections.
+
+The commit message from a few commit before shows the resulting
+auth_session_info change.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13328
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+
+Autobuild-User(master): Ralph Böhme <slow@samba.org>
+Autobuild-Date(master): Fri Mar 16 03:03:31 CET 2018 on sn-devel-144
+
+(cherry picked from commit 1957bf11f127fc08c6622999cadc7dd580ac7d3b)
+(cherry picked from commit 6c1dde631da2f5b41682210eca40f9d363168696)
+---
+ selftest/knownfail.d/anonymous-guest | 1 -
+ source3/auth/auth_builtin.c          | 2 +-
+ source3/auth/auth_ntlmssp.c          | 5 +----
+ 3 files changed, 2 insertions(+), 6 deletions(-)
+ delete mode 100644 selftest/knownfail.d/anonymous-guest
+
+diff --git a/selftest/knownfail.d/anonymous-guest b/selftest/knownfail.d/anonymous-guest
+deleted file mode 100644
+index a134cece3d5..00000000000
+--- a/selftest/knownfail.d/anonymous-guest
++++ /dev/null
+@@ -1 +0,0 @@
+-^samba3.smbtorture_s3.*nt4_dc.*.SMB2-ANONYMOUS.smbtorture
+diff --git a/source3/auth/auth_builtin.c b/source3/auth/auth_builtin.c
+index 0fa95d9f16d..a2d95a77330 100644
+--- a/source3/auth/auth_builtin.c
++++ b/source3/auth/auth_builtin.c
+@@ -81,7 +81,7 @@ static NTSTATUS check_guest_security(const struct auth_context *auth_context,
+ 		break;
+ 	}
+ 
+-	return make_server_info_guest(NULL, server_info);
++	return make_server_info_anonymous(NULL, server_info);
+ }
+ 
+ /* Guest modules initialisation */
+diff --git a/source3/auth/auth_ntlmssp.c b/source3/auth/auth_ntlmssp.c
+index fd629fd9a03..2e345e17571 100644
+--- a/source3/auth/auth_ntlmssp.c
++++ b/source3/auth/auth_ntlmssp.c
+@@ -65,10 +65,7 @@ NTSTATUS auth3_generate_session_info(struct auth4_context *auth_context,
+ 
+ 		cmp = dom_sid_compare(sid, &global_sid_Anonymous);
+ 		if (cmp == 0) {
+-			/*
+-			 * TODO: use auth_anonymous_session_info() here?
+-			 */
+-			return make_session_info_guest(mem_ctx, session_info);
++			return make_session_info_anonymous(mem_ctx, session_info);
+ 		}
+ 
+ 		return NT_STATUS_INTERNAL_ERROR;
+-- 
+2.17.0
+
+
+From 48646ffe1c60854d832c80f42c1236e43d5b1fb9 Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 9 Jan 2018 08:55:48 +0100
+Subject: [PATCH 20/21] s3:libsmb: allow -U"\\administrator" to work
+
+cli_credentials_get_principal() returns NULL in that case.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13206
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit 0786a65cabb92a812cf1c692d0d26914f74a6f87)
+(cherry picked from commit 4c087a0e9e8ffd797e810f7dc21d630fd6833eed)
+---
+ source3/libsmb/cliconnect.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/source3/libsmb/cliconnect.c b/source3/libsmb/cliconnect.c
+index 70bcead445e..d819e4c62f2 100644
+--- a/source3/libsmb/cliconnect.c
++++ b/source3/libsmb/cliconnect.c
+@@ -283,8 +283,9 @@ NTSTATUS cli_session_creds_prepare_krb5(struct cli_state *cli,
+ 
+ 	auth_requested = cli_credentials_authentication_requested(creds);
+ 	if (auth_requested) {
++		errno = 0;
+ 		user_principal = cli_credentials_get_principal(creds, frame);
+-		if (user_principal == NULL) {
++		if (errno != 0) {
+ 			TALLOC_FREE(frame);
+ 			return NT_STATUS_NO_MEMORY;
+ 		}
+@@ -299,6 +300,10 @@ NTSTATUS cli_session_creds_prepare_krb5(struct cli_state *cli,
+ 		try_kerberos = true;
+ 	}
+ 
++	if (user_principal == NULL) {
++		try_kerberos = false;
++	}
++
+ 	if (target_hostname == NULL) {
+ 		try_kerberos = false;
+ 	} else if (is_ipaddress(target_hostname)) {
+-- 
+2.17.0
+
+
+From 38c3a25e80d7dfdef3edf330117a43a1acded21d Mon Sep 17 00:00:00 2001
+From: Stefan Metzmacher <metze@samba.org>
+Date: Tue, 9 Jan 2018 08:57:05 +0100
+Subject: [PATCH 21/21] s3:cliconnect.c: remove useless ';'
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13206
+
+Signed-off-by: Stefan Metzmacher <metze@samba.org>
+Reviewed-by: Andrew Bartlett <abartlet@samba.org>
+(cherry picked from commit e039e9b0d2a16b21ace019b028e5c8244486b8a3)
+(cherry picked from commit 04cc8936c3f90bf3bbb05bce25c55212c8f0823b)
+---
+ source3/libsmb/cliconnect.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/libsmb/cliconnect.c b/source3/libsmb/cliconnect.c
+index d819e4c62f2..8c815659c80 100644
+--- a/source3/libsmb/cliconnect.c
++++ b/source3/libsmb/cliconnect.c
+@@ -1289,7 +1289,7 @@ static struct tevent_req *cli_session_setup_spnego_send(
+ 
+ 	status = cli_session_creds_prepare_krb5(cli, creds);
+ 	if (tevent_req_nterror(req, status)) {
+-		return tevent_req_post(req, ev);;
++		return tevent_req_post(req, ev);
+ 	}
+ 
+ 	subreq = cli_session_setup_gensec_send(state, ev, cli, creds,
+-- 
+2.17.0
+
