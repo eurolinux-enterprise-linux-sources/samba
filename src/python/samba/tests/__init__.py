@@ -67,6 +67,13 @@ class TestCase(unittest.TestCase):
     def get_credentials(self):
         return cmdline_credentials
 
+    def get_creds_ccache_name(self):
+        creds = self.get_credentials()
+        ccache = creds.get_named_ccache(self.get_loadparm())
+        ccache_name = ccache.get_name()
+
+        return ccache_name
+
     def hexdump(self, src):
         N = 0
         result = ''
@@ -209,6 +216,29 @@ class TestCase(unittest.TestCase):
             finally:
                 result.stopTest(self)
 
+    def assertStringsEqual(self, a, b, msg=None, strip=False):
+        """Assert equality between two strings and highlight any differences.
+        If strip is true, leading and trailing whitespace is ignored."""
+        if strip:
+            a = a.strip()
+            b = b.strip()
+
+        if a != b:
+            sys.stderr.write("The strings differ %s(lengths %d vs %d); "
+                             "a diff follows\n"
+                             % ('when stripped ' if strip else '',
+                                len(a), len(b),
+                             ))
+
+            from difflib import unified_diff
+            diff = unified_diff(a.splitlines(True),
+                                b.splitlines(True),
+                                'a', 'b')
+            for line in diff:
+                sys.stderr.write(line)
+
+            self.fail(msg)
+
 
 class LdbTestCase(TestCase):
     """Trivial test case for running tests against a LDB."""
@@ -311,19 +341,30 @@ class BlackboxTestCase(TestCaseInTempDir):
         return line
 
     def check_run(self, line):
+        self.check_exit_code(line, 0)
+
+    def check_exit_code(self, line, expected):
         line = self._make_cmdline(line)
-        p = subprocess.Popen(line, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        retcode = p.wait()
-        if retcode:
-            raise BlackboxProcessError(retcode, line, p.stdout.read(), p.stderr.read())
+        p = subprocess.Popen(line,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE,
+                             shell=True)
+        stdoutdata, stderrdata = p.communicate()
+        retcode = p.returncode
+        if retcode != expected:
+            raise BlackboxProcessError(retcode,
+                                       line,
+                                       stdoutdata,
+                                       stderrdata)
 
     def check_output(self, line):
         line = self._make_cmdline(line)
         p = subprocess.Popen(line, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, close_fds=True)
-        retcode = p.wait()
+        stdoutdata, stderrdata = p.communicate()
+        retcode = p.returncode
         if retcode:
-            raise BlackboxProcessError(retcode, line, p.stdout.read(), p.stderr.read())
-        return p.stdout.read()
+            raise BlackboxProcessError(retcode, line, stdoutdata, stderrdata)
+        return stdoutdata
 
 
 def connect_samdb(samdb_url, lp=None, session_info=None, credentials=None,

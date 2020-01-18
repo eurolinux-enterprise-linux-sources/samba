@@ -29,6 +29,9 @@
 #include "source3/lib/dbwrap/dbwrap_watch.h"
 #include "messages.h"
 
+#undef DBGC_CLASS
+#define DBGC_CLASS DBGC_SMB2
+
 static struct tevent_req *smbd_smb2_setinfo_send(TALLOC_CTX *mem_ctx,
 						 struct tevent_context *ev,
 						 struct smbd_smb2_request *smb2req,
@@ -279,8 +282,7 @@ static void defer_rename_done(struct tevent_req *subreq)
 	int ret_size = 0;
 	bool ok;
 
-	status = dbwrap_watched_watch_recv(subreq, state->req, NULL, NULL,
-					   NULL);
+	status = dbwrap_watched_watch_recv(subreq, NULL, NULL);
 	TALLOC_FREE(subreq);
 	if (!NT_STATUS_IS_OK(status)) {
 		DEBUG(5, ("dbwrap_record_watch_recv returned %s\n",

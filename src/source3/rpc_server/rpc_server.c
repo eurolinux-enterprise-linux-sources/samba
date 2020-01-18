@@ -216,6 +216,7 @@ static void named_pipe_listener(struct tevent_context *ev,
 		}
 		return;
 	}
+	smb_set_close_on_exec(sd);
 
 	DEBUG(6, ("Accepted socket %d\n", sd));
 
@@ -722,6 +723,7 @@ static void dcerpc_ncacn_tcpip_listener(struct tevent_context *ev,
 		}
 		return;
 	}
+	smb_set_close_on_exec(s);
 
 	rc = tsocket_address_bsd_from_sockaddr(state,
 					       (struct sockaddr *)(void *) &addr,
@@ -892,6 +894,7 @@ static void dcerpc_ncalrpc_listener(struct tevent_context *ev,
 		}
 		return;
 	}
+	smb_set_close_on_exec(sd);
 
 	rc = tsocket_address_bsd_from_sockaddr(state,
 					       addr, len,
@@ -1104,14 +1107,11 @@ void dcerpc_ncacn_accept(struct tevent_context *ev_ctx,
 	}
 
 	if (ncacn_conn->session_info == NULL) {
-		/*
-		 * TODO: use auth_anonymous_session_info() here?
-		 */
-		status = make_session_info_guest(ncacn_conn,
-						 &ncacn_conn->session_info);
+		status = make_session_info_anonymous(ncacn_conn,
+						     &ncacn_conn->session_info);
 		if (!NT_STATUS_IS_OK(status)) {
 			DEBUG(2, ("Failed to create "
-				  "make_session_info_guest - %s\n",
+				  "make_session_info_anonymous - %s\n",
 				  nt_errstr(status)));
 			talloc_free(ncacn_conn);
 			return;

@@ -923,6 +923,11 @@ void reply_tcon_and_X(struct smb_request *req)
 		}
 
 		TALLOC_FREE(tcon);
+		/*
+		 * This tree id is gone. Make sure we can't re-use it
+		 * by accident.
+		 */
+		req->tid = 0;
 	}
 
 	if ((passlen > MAX_PASS_LEN) || (passlen >= req->buflen)) {
@@ -1895,9 +1900,6 @@ void reply_search(struct smb_request *req)
 	}
 
 	DEBUG(4,("dptr_num is %d\n",dptr_num));
-
-	/* Initialize per SMBsearch/SMBffirst/SMBfunique operation data */
-	dptr_init_search_op(dirptr);
 
 	if ((dirtype&0x1F) == FILE_ATTRIBUTE_VOLUME) {
 		char buf[DIR_STRUCT_SIZE];

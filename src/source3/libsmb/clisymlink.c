@@ -31,7 +31,7 @@
 struct cli_symlink_state {
 	struct tevent_context *ev;
 	struct cli_state *cli;
-	const char *oldpath;
+	const char *link_target;
 	const char *newpath;
 	uint32_t flags;
 
@@ -49,7 +49,7 @@ static void cli_symlink_close_done(struct tevent_req *subreq);
 struct tevent_req *cli_symlink_send(TALLOC_CTX *mem_ctx,
 				    struct tevent_context *ev,
 				    struct cli_state *cli,
-				    const char *oldpath,
+				    const char *link_target,
 				    const char *newpath,
 				    uint32_t flags)
 {
@@ -62,12 +62,12 @@ struct tevent_req *cli_symlink_send(TALLOC_CTX *mem_ctx,
 	}
 	state->ev = ev;
 	state->cli = cli;
-	state->oldpath = oldpath;
+	state->link_target = link_target;
 	state->newpath = newpath;
 	state->flags = flags;
 
 	subreq = cli_ntcreate_send(
-		state, ev, cli, state->oldpath, 0,
+		state, ev, cli, state->newpath, 0,
 		SYNCHRONIZE_ACCESS|DELETE_ACCESS|
 		FILE_READ_ATTRIBUTES|FILE_WRITE_ATTRIBUTES,
 		FILE_ATTRIBUTE_NORMAL, FILE_SHARE_NONE, FILE_CREATE,
@@ -86,8 +86,7 @@ static void cli_symlink_create_done(struct tevent_req *subreq)
 		subreq, struct tevent_req);
 	struct cli_symlink_state *state = tevent_req_data(
 		req, struct cli_symlink_state);
-	uint8_t *data;
-	size_t data_len;
+	DATA_BLOB data;
 	NTSTATUS status;
 
 	status = cli_ntcreate_recv(subreq, &state->fnum, NULL);
@@ -96,24 +95,35 @@ static void cli_symlink_create_done(struct tevent_req *subreq)
 		return;
 	}
 
-	SIVAL(state->setup, 0, FSCTL_SET_REPARSE_POINT);
-	SSVAL(state->setup, 4, state->fnum);
-	SCVAL(state->setup, 6, 1); /* IsFcntl */
-	SCVAL(state->setup, 7, 0); /* IsFlags */
-
 	if (!symlink_reparse_buffer_marshall(
-		    state->newpath, NULL, state->flags, state,
-		    &data, &data_len)) {
+		    state->link_target, NULL, state->flags, state,
+		    &data.data, &data.length)) {
 		tevent_req_oom(req);
 		return;
 	}
 
-	subreq = cli_trans_send(state, state->ev, state->cli, 0, SMBnttrans,
+	if (smbXcli_conn_protocol(state->cli->conn) >= PROTOCOL_SMB2_02) {
+		subreq = cli_smb2_set_reparse_point_fnum_send(state,
+						state->ev,
+						state->cli,
+						state->fnum,
+						data);
+	} else {
+		SIVAL(state->setup, 0, FSCTL_SET_REPARSE_POINT);
+		SSVAL(state->setup, 4, state->fnum);
+		SCVAL(state->setup, 6, 1); /* IsFcntl */
+		SCVAL(state->setup, 7, 0); /* IsFlags */
+
+
+		subreq = cli_trans_send(state, state->ev, state->cli, 0,
+				SMBnttrans,
 				NULL, -1, /* name, fid */
 				NT_TRANSACT_IOCTL, 0,
 				state->setup, 4, 0, /* setup */
 				NULL, 0, 0,	    /* param */
-				data, data_len, 0); /* data */
+				data.data, data.length, 0); /* data */
+	}
+
 	if (tevent_req_nomem(subreq, req)) {
 		return;
 	}
@@ -127,11 +137,16 @@ static void cli_symlink_set_reparse_done(struct tevent_req *subreq)
 	struct cli_symlink_state *state = tevent_req_data(
 		req, struct cli_symlink_state);
 
-	state->set_reparse_status = cli_trans_recv(
-		subreq, NULL, NULL,
-		NULL, 0, NULL,	/* rsetup */
-		NULL, 0, NULL,	/* rparam */
-		NULL, 0, NULL);	/* rdata */
+	if (smbXcli_conn_protocol(state->cli->conn) >= PROTOCOL_SMB2_02) {
+		state->set_reparse_status =
+			cli_smb2_set_reparse_point_fnum_recv(subreq);
+	} else {
+		state->set_reparse_status = cli_trans_recv(
+			subreq, NULL, NULL,
+			NULL, 0, NULL,	/* rsetup */
+			NULL, 0, NULL,	/* rparam */
+			NULL, 0, NULL);	/* rdata */
+	}
 	TALLOC_FREE(subreq);
 
 	if (NT_STATUS_IS_OK(state->set_reparse_status)) {
@@ -197,7 +212,7 @@ NTSTATUS cli_symlink_recv(struct tevent_req *req)
 	return tevent_req_simple_recv_ntstatus(req);
 }
 
-NTSTATUS cli_symlink(struct cli_state *cli, const char *oldname,
+NTSTATUS cli_symlink(struct cli_state *cli, const char *link_target,
 		     const char *newname, uint32_t flags)
 {
 	TALLOC_CTX *frame = talloc_stackframe();
@@ -213,7 +228,7 @@ NTSTATUS cli_symlink(struct cli_state *cli, const char *oldname,
 	if (ev == NULL) {
 		goto fail;
 	}
-	req = cli_symlink_send(frame, ev, cli, oldname, newname, flags);
+	req = cli_symlink_send(frame, ev, cli, link_target, newname, flags);
 	if (req == NULL) {
 		goto fail;
 	}
@@ -281,17 +296,26 @@ static void cli_readlink_opened(struct tevent_req *subreq)
 		return;
 	}
 
-	SIVAL(state->setup, 0, FSCTL_GET_REPARSE_POINT);
-	SSVAL(state->setup, 4, state->fnum);
-	SCVAL(state->setup, 6, 1); /* IsFcntl */
-	SCVAL(state->setup, 7, 0); /* IsFlags */
+	if (smbXcli_conn_protocol(state->cli->conn) >= PROTOCOL_SMB2_02) {
+		subreq = cli_smb2_get_reparse_point_fnum_send(state,
+						state->ev,
+						state->cli,
+						state->fnum);
+	} else {
+		SIVAL(state->setup, 0, FSCTL_GET_REPARSE_POINT);
+		SSVAL(state->setup, 4, state->fnum);
+		SCVAL(state->setup, 6, 1); /* IsFcntl */
+		SCVAL(state->setup, 7, 0); /* IsFlags */
 
-	subreq = cli_trans_send(state, state->ev, state->cli, 0, SMBnttrans,
+		subreq = cli_trans_send(state, state->ev, state->cli,
+				0, SMBnttrans,
 				NULL, -1, /* name, fid */
 				NT_TRANSACT_IOCTL, 0,
 				state->setup, 4, 0, /* setup */
 				NULL, 0, 0,	    /* param */
 				NULL, 0, 16384); /* data */
+	}
+
 	if (tevent_req_nomem(subreq, req)) {
 		return;
 	}
@@ -305,11 +329,23 @@ static void cli_readlink_got_reparse_data(struct tevent_req *subreq)
 	struct cli_readlink_state *state = tevent_req_data(
 		req, struct cli_readlink_state);
 
-	state->get_reparse_status = cli_trans_recv(
-		subreq, state, NULL,
-		NULL, 0, NULL,	/* rsetup */
-		NULL, 0, NULL,	/* rparam */
-		&state->data, 20, &state->num_data); /* rdata */
+	if (smbXcli_conn_protocol(state->cli->conn) >= PROTOCOL_SMB2_02) {
+		DATA_BLOB recv_data;
+		state->get_reparse_status =
+			cli_smb2_get_reparse_point_fnum_recv(subreq,
+							state,
+							&recv_data);
+		if (NT_STATUS_IS_OK(state->get_reparse_status)) {
+			state->data = recv_data.data;
+			state->num_data = recv_data.length;
+		}
+	} else {
+		state->get_reparse_status = cli_trans_recv(
+			subreq, state, NULL,
+			NULL, 0, NULL,	/* rsetup */
+			NULL, 0, NULL,	/* rparam */
+			&state->data, 20, &state->num_data); /* rdata */
+	}
 	TALLOC_FREE(subreq);
 
 	subreq = cli_close_send(state, state->ev, state->cli, state->fnum);

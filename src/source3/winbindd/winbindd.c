@@ -34,7 +34,6 @@
 #include "rpc_client/cli_netlogon.h"
 #include "idmap.h"
 #include "lib/addrchange.h"
-#include "serverid.h"
 #include "auth.h"
 #include "messages.h"
 #include "../lib/util/pidfile.h"
@@ -59,44 +58,6 @@ static bool opt_nocache = False;
 static bool interactive = False;
 
 extern bool override_logfile;
-
-struct tevent_context *winbind_event_context(void)
-{
-	static struct tevent_context *ev = NULL;
-
-	if (ev != NULL) {
-		return ev;
-	}
-
-	/*
-	 * Note we MUST use the NULL context here, not the autofree context,
-	 * to avoid side effects in forked children exiting.
-	 */
-	ev = samba_tevent_context_init(NULL);
-	if (ev == NULL) {
-		smb_panic("Could not init winbindd's messaging context.\n");
-	}
-	return ev;
-}
-
-struct messaging_context *winbind_messaging_context(void)
-{
-	static struct messaging_context *msg = NULL;
-
-	if (msg != NULL) {
-		return msg;
-	}
-
-	/*
-	 * Note we MUST use the NULL context here, not the autofree context,
-	 * to avoid side effects in forked children exiting.
-	 */
-	msg = messaging_init(NULL, winbind_event_context());
-	if (msg == NULL) {
-		smb_panic("Could not init winbindd's messaging context.\n");
-	}
-	return msg;
-}
 
 struct imessaging_context *winbind_imessaging_context(void)
 {
@@ -124,7 +85,7 @@ struct imessaging_context *winbind_imessaging_context(void)
 	 * Note we MUST use the NULL context here, not the autofree context,
 	 * to avoid side effects in forked children exiting.
 	 */
-	msg = imessaging_init(NULL, lp_ctx, myself, winbind_event_context());
+	msg = imessaging_init(NULL, lp_ctx, myself, server_event_context());
 	talloc_unlink(NULL, lp_ctx);
 
 	if (msg == NULL) {
@@ -259,9 +220,6 @@ static void terminate(bool is_parent)
 #endif
 
 	if (is_parent) {
-		struct messaging_context *msg = winbind_messaging_context();
-		struct server_id self = messaging_server_id(msg);
-		serverid_deregister(self);
 		pidfile_unlink(lp_pid_directory(), "winbindd");
 	}
 
@@ -307,14 +265,14 @@ bool winbindd_setup_sig_term_handler(bool parent)
 	struct tevent_signal *se;
 	bool *is_parent;
 
-	is_parent = talloc(winbind_event_context(), bool);
+	is_parent = talloc(server_event_context(), bool);
 	if (!is_parent) {
 		return false;
 	}
 
 	*is_parent = parent;
 
-	se = tevent_add_signal(winbind_event_context(),
+	se = tevent_add_signal(server_event_context(),
 			       is_parent,
 			       SIGTERM, 0,
 			       winbindd_sig_term_handler,
@@ -325,7 +283,7 @@ bool winbindd_setup_sig_term_handler(bool parent)
 		return false;
 	}
 
-	se = tevent_add_signal(winbind_event_context(),
+	se = tevent_add_signal(server_event_context(),
 			       is_parent,
 			       SIGINT, 0,
 			       winbindd_sig_term_handler,
@@ -336,7 +294,7 @@ bool winbindd_setup_sig_term_handler(bool parent)
 		return false;
 	}
 
-	se = tevent_add_signal(winbind_event_context(),
+	se = tevent_add_signal(server_event_context(),
 			       is_parent,
 			       SIGQUIT, 0,
 			       winbindd_sig_term_handler,
@@ -357,7 +315,7 @@ bool winbindd_setup_stdin_handler(bool parent, bool foreground)
 	if (foreground) {
 		struct stat st;
 
-		is_parent = talloc(winbind_event_context(), bool);
+		is_parent = talloc(server_event_context(), bool);
 		if (!is_parent) {
 			return false;
 		}
@@ -373,7 +331,7 @@ bool winbindd_setup_stdin_handler(bool parent, bool foreground)
 			return false;
 		}
 		if (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode)) {
-			tevent_add_fd(winbind_event_context(),
+			tevent_add_fd(server_event_context(),
 					is_parent,
 					0,
 					TEVENT_FD_READ,
@@ -405,15 +363,15 @@ bool winbindd_setup_sig_hup_handler(const char *lfile)
 	char *file = NULL;
 
 	if (lfile) {
-		file = talloc_strdup(winbind_event_context(),
+		file = talloc_strdup(server_event_context(),
 				     lfile);
 		if (!file) {
 			return false;
 		}
 	}
 
-	se = tevent_add_signal(winbind_event_context(),
-			       winbind_event_context(),
+	se = tevent_add_signal(server_event_context(),
+			       server_event_context(),
 			       SIGHUP, 0,
 			       winbindd_sig_hup_handler,
 			       file);
@@ -442,8 +400,8 @@ static bool winbindd_setup_sig_chld_handler(void)
 {
 	struct tevent_signal *se;
 
-	se = tevent_add_signal(winbind_event_context(),
-			       winbind_event_context(),
+	se = tevent_add_signal(server_event_context(),
+			       server_event_context(),
 			       SIGCHLD, 0,
 			       winbindd_sig_chld_handler,
 			       NULL);
@@ -468,8 +426,8 @@ static bool winbindd_setup_sig_usr2_handler(void)
 {
 	struct tevent_signal *se;
 
-	se = tevent_add_signal(winbind_event_context(),
-			       winbind_event_context(),
+	se = tevent_add_signal(server_event_context(),
+			       server_event_context(),
 			       SIGUSR2, 0,
 			       winbindd_sig_usr2_handler,
 			       NULL);
@@ -549,6 +507,8 @@ static void winbind_msg_validate_cache(struct messaging_context *msg_ctx,
 
 	/* install default SIGCHLD handler: validation code uses fork/waitpid */
 	CatchSignal(SIGCHLD, SIG_DFL);
+
+	setproctitle("validate cache child");
 
 	ret = (uint8_t)winbindd_validate_cache_nobackup();
 	DEBUG(10, ("winbindd_msg_validata_cache: got return value %d\n", ret));
@@ -734,7 +694,7 @@ static void process_request(struct winbindd_cli_state *state)
 		DEBUG(10, ("process_request: Handling async request %d:%s\n",
 			   (int)state->pid, state->cmd_name));
 
-		req = atable->send_req(state->mem_ctx, winbind_event_context(),
+		req = atable->send_req(state->mem_ctx, server_event_context(),
 				       state, state->request);
 		if (req == NULL) {
 			DEBUG(0, ("process_request: atable->send failed for "
@@ -828,7 +788,7 @@ static void request_finished(struct winbindd_cli_state *state)
 
 	TALLOC_FREE(state->request);
 
-	req = wb_resp_write_send(state, winbind_event_context(),
+	req = wb_resp_write_send(state, server_event_context(),
 				 state->out_queue, state->sock,
 				 state->response);
 	if (req == NULL) {
@@ -869,7 +829,7 @@ static void winbind_client_response_written(struct tevent_req *req)
 	state->cmd_name = "no request";
 	state->recv_fn = NULL;
 
-	req = wb_req_read_send(state, winbind_event_context(), state->sock,
+	req = wb_req_read_send(state, server_event_context(), state->sock,
 			       WINBINDD_MAX_EXTRA_DATA);
 	if (req == NULL) {
 		remove_client(state);
@@ -916,6 +876,7 @@ static void new_connection(int listen_sock, bool privileged)
 		}
 		return;
 	}
+	smb_set_close_on_exec(sock);
 
 	DEBUG(6,("accepted socket %d\n", sock));
 
@@ -937,7 +898,7 @@ static void new_connection(int listen_sock, bool privileged)
 
 	state->privileged = privileged;
 
-	req = wb_req_read_send(state, winbind_event_context(), state->sock,
+	req = wb_req_read_send(state, server_event_context(), state->sock,
 			       WINBINDD_MAX_EXTRA_DATA);
 	if (req == NULL) {
 		TALLOC_FREE(state);
@@ -977,7 +938,7 @@ static void winbind_client_request_read(struct tevent_req *req)
 		return;
 	}
 
-	req = wait_for_read_send(state, winbind_event_context(), state->sock,
+	req = wait_for_read_send(state, server_event_context(), state->sock,
 				 true);
 	if (req == NULL) {
 		DEBUG(0, ("winbind_client_request_read[%d:%s]:"
@@ -1239,7 +1200,7 @@ static bool winbindd_setup_listeners(void)
 	int rc;
 	char *socket_path;
 
-	pub_state = talloc(winbind_event_context(),
+	pub_state = talloc(server_event_context(),
 			   struct winbindd_listen_state);
 	if (!pub_state) {
 		goto failed;
@@ -1256,7 +1217,7 @@ static bool winbindd_setup_listeners(void)
 		goto failed;
 	}
 
-	fde = tevent_add_fd(winbind_event_context(), pub_state, pub_state->fd,
+	fde = tevent_add_fd(server_event_context(), pub_state, pub_state->fd,
 			    TEVENT_FD_READ, winbindd_listen_fde_handler,
 			    pub_state);
 	if (fde == NULL) {
@@ -1265,7 +1226,7 @@ static bool winbindd_setup_listeners(void)
 	}
 	tevent_fd_set_auto_close(fde);
 
-	priv_state = talloc(winbind_event_context(),
+	priv_state = talloc(server_event_context(),
 			    struct winbindd_listen_state);
 	if (!priv_state) {
 		goto failed;
@@ -1288,7 +1249,7 @@ static bool winbindd_setup_listeners(void)
 		goto failed;
 	}
 
-	fde = tevent_add_fd(winbind_event_context(), priv_state,
+	fde = tevent_add_fd(server_event_context(), priv_state,
 			    priv_state->fd, TEVENT_FD_READ,
 			    winbindd_listen_fde_handler, priv_state);
 	if (fde == NULL) {
@@ -1297,7 +1258,7 @@ static bool winbindd_setup_listeners(void)
 	}
 	tevent_fd_set_auto_close(fde);
 
-	winbindd_scrub_clients_handler(winbind_event_context(), NULL,
+	winbindd_scrub_clients_handler(server_event_context(), NULL,
 				       timeval_current(), NULL);
 	return true;
 failed:
@@ -1319,6 +1280,7 @@ bool winbindd_use_cache(void)
 static void winbindd_register_handlers(struct messaging_context *msg_ctx,
 				       bool foreground)
 {
+	bool scan_trusts = true;
 	NTSTATUS status;
 	/* Setup signal handlers */
 
@@ -1343,16 +1305,6 @@ static void winbindd_register_handlers(struct messaging_context *msg_ctx,
 		exit(1);
 	}
 
-	/* get broadcast messages */
-
-	if (!serverid_register(messaging_server_id(msg_ctx),
-			       FLAG_MSG_GENERAL |
-			       FLAG_MSG_WINBIND |
-			       FLAG_MSG_DBWRAP)) {
-		DEBUG(1, ("Could not register myself in serverid.tdb\n"));
-		exit(1);
-	}
-
 	/* React on 'smbcontrol winbindd reload-config' in the same way
 	   as to SIGHUP signal */
 	messaging_register(msg_ctx, NULL,
@@ -1369,9 +1321,9 @@ static void winbindd_register_handlers(struct messaging_context *msg_ctx,
 			   MSG_WINBIND_ONLINESTATUS, winbind_msg_onlinestatus);
 
 	/* Handle domain online/offline messages for domains */
-	messaging_register(winbind_messaging_context(), NULL,
+	messaging_register(server_messaging_context(), NULL,
 			   MSG_WINBIND_DOMAIN_OFFLINE, winbind_msg_domain_offline);
-	messaging_register(winbind_messaging_context(), NULL,
+	messaging_register(server_messaging_context(), NULL,
 			   MSG_WINBIND_DOMAIN_ONLINE, winbind_msg_domain_online);
 
 	messaging_register(msg_ctx, NULL,
@@ -1394,6 +1346,10 @@ static void winbindd_register_handlers(struct messaging_context *msg_ctx,
 			   MSG_DEBUG,
 			   winbind_msg_debug);
 
+	messaging_register(msg_ctx, NULL,
+			   MSG_WINBIND_DISCONNECT_DC,
+			   winbind_disconnect_dc_parent);
+
 	netsamlogon_cache_init(); /* Non-critical */
 
 	/* clear the cached list of trusted domains */
@@ -1411,8 +1367,20 @@ static void winbindd_register_handlers(struct messaging_context *msg_ctx,
 	smb_nscd_flush_user_cache();
 	smb_nscd_flush_group_cache();
 
-	if (lp_allow_trusted_domains()) {
-		if (tevent_add_timer(winbind_event_context(), NULL, timeval_zero(),
+	if (!lp_winbind_scan_trusted_domains()) {
+		scan_trusts = false;
+	}
+
+	if (!lp_allow_trusted_domains()) {
+		scan_trusts = false;
+	}
+
+	if (IS_DC) {
+		scan_trusts = false;
+	}
+
+	if (scan_trusts) {
+		if (tevent_add_timer(server_event_context(), NULL, timeval_zero(),
 			      rescan_trusted_domains, NULL) == NULL) {
 			DEBUG(0, ("Could not trigger rescan_trusted_domains()\n"));
 			exit(1);
@@ -1541,6 +1509,8 @@ int main(int argc, const char **argv)
 	TALLOC_CTX *frame;
 	NTSTATUS status;
 	bool ok;
+
+	setproctitle_init(argc, discard_const(argv), environ);
 
 	/*
 	 * Do this before any other talloc operation
@@ -1682,7 +1652,7 @@ int main(int argc, const char **argv)
 
 	/* Initialise messaging system */
 
-	if (winbind_messaging_context() == NULL) {
+	if (server_messaging_context() == NULL) {
 		exit(1);
 	}
 
@@ -1776,8 +1746,8 @@ int main(int argc, const char **argv)
 	 * winbindd-specific resources we must free yet. JRA.
 	 */
 
-	status = reinit_after_fork(winbind_messaging_context(),
-				   winbind_event_context(),
+	status = reinit_after_fork(server_messaging_context(),
+				   server_event_context(),
 				   false, NULL);
 	if (!NT_STATUS_IS_OK(status)) {
 		exit_daemon("Winbindd reinit_after_fork() failed", map_errno_from_nt_status(status));
@@ -1793,9 +1763,9 @@ int main(int argc, const char **argv)
 		exit_daemon(nt_errstr(status), map_errno_from_nt_status(status));
 	}
 
-	winbindd_register_handlers(winbind_messaging_context(), !Fork);
+	winbindd_register_handlers(server_messaging_context(), !Fork);
 
-	if (!messaging_parent_dgm_cleanup_init(winbind_messaging_context())) {
+	if (!messaging_parent_dgm_cleanup_init(server_messaging_context())) {
 		exit(1);
 	}
 
@@ -1807,8 +1777,8 @@ int main(int argc, const char **argv)
 	rpc_lsarpc_init(NULL);
 	rpc_samr_init(NULL);
 
-	winbindd_init_addrchange(NULL, winbind_event_context(),
-				 winbind_messaging_context());
+	winbindd_init_addrchange(NULL, server_event_context(),
+				 server_messaging_context());
 
 	/* setup listen sockets */
 
@@ -1824,11 +1794,13 @@ int main(int argc, const char **argv)
 		daemon_ready("winbindd");
 	}
 
+	gpupdate_init();
+
 	/* Loop waiting for requests */
 	while (1) {
 		frame = talloc_stackframe();
 
-		if (tevent_loop_once(winbind_event_context()) == -1) {
+		if (tevent_loop_once(server_event_context()) == -1) {
 			DEBUG(1, ("tevent_loop_once() failed: %s\n",
 				  strerror(errno)));
 			return 1;

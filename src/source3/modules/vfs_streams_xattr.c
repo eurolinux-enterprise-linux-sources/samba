@@ -277,6 +277,7 @@ static int streams_xattr_fstat(vfs_handle_struct *handle, files_struct *fsp,
 
 	sbuf->st_ex_ino = stream_inode(sbuf, io->xattr_name);
 	sbuf->st_ex_mode &= ~S_IFMT;
+	sbuf->st_ex_mode &= ~S_IFDIR;
         sbuf->st_ex_mode |= S_IFREG;
         sbuf->st_ex_blocks = sbuf->st_ex_size / STAT_ST_BLOCKSIZE + 1;
 
@@ -331,6 +332,7 @@ static int streams_xattr_stat(vfs_handle_struct *handle,
 
 	smb_fname->st.st_ex_ino = stream_inode(&smb_fname->st, xattr_name);
 	smb_fname->st.st_ex_mode &= ~S_IFMT;
+	smb_fname->st.st_ex_mode &= ~S_IFDIR;
         smb_fname->st.st_ex_mode |= S_IFREG;
         smb_fname->st.st_ex_blocks =
 	    smb_fname->st.st_ex_size / STAT_ST_BLOCKSIZE + 1;
@@ -493,9 +495,7 @@ static int streams_xattr_open(vfs_handle_struct *handle,
 		}
 	}
 
-        sio = (struct stream_io *)VFS_ADD_FSP_EXTENSION(handle, fsp,
-							struct stream_io,
-							NULL);
+        sio = VFS_ADD_FSP_EXTENSION(handle, fsp, struct stream_io, NULL);
         if (sio == NULL) {
                 errno = ENOMEM;
                 goto fail;
@@ -1700,7 +1700,7 @@ static struct vfs_fn_pointers vfs_streams_xattr_fns = {
 	.fset_nt_acl_fn = streams_xattr_fset_nt_acl,
 };
 
-NTSTATUS vfs_streams_xattr_init(TALLOC_CTX *);
+static_decl_vfs;
 NTSTATUS vfs_streams_xattr_init(TALLOC_CTX *ctx)
 {
 	return smb_register_vfs(SMB_VFS_INTERFACE_VERSION, "streams_xattr",

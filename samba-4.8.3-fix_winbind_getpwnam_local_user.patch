@@ -1,0 +1,216 @@
+From 091731ca7cc89c10f698a8d52e0ade1a07bde0d3 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 2 Jul 2018 16:18:52 +0200
+Subject: [PATCH 1/2] nsswitch: Add tests to lookup user via getpwnam
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13503
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+(cherry picked from commit 8e96e9ea46351de34ad5cac9a9a9ece4226b462c)
+---
+ nsswitch/tests/test_wbinfo_user_info.sh | 71 ++++++++++++++++++++++++++++-----
+ selftest/knownfail.d/upn_handling       |  2 +
+ source3/selftest/tests.py               |  4 +-
+ 3 files changed, 66 insertions(+), 11 deletions(-)
+
+diff --git a/nsswitch/tests/test_wbinfo_user_info.sh b/nsswitch/tests/test_wbinfo_user_info.sh
+index 2803ac1408b..da30f97be74 100755
+--- a/nsswitch/tests/test_wbinfo_user_info.sh
++++ b/nsswitch/tests/test_wbinfo_user_info.sh
+@@ -2,19 +2,20 @@
+ # Blackbox test for wbinfo lookup for account name and upn
+ # Copyright (c) 2018 Andreas Schneider <asn@samba.org>
+ 
+-if [ $# -lt 5 ]; then
++if [ $# -lt 6 ]; then
+ cat <<EOF
+-Usage: $(basename $0) DOMAIN REALM USERNAME1 UPN_NAME1 USERNAME2 UPN_NAME2
++Usage: $(basename $0) DOMAIN REALM OWN_DOMAIN USERNAME1 UPN_NAME1 USERNAME2 UPN_NAME2
+ EOF
+ exit 1;
+ fi
+ 
+ DOMAIN=$1
+ REALM=$2
+-USERNAME1=$3
+-UPN_NAME1=$4
+-USERNAME2=$5
+-UPN_NAME2=$6
++OWN_DOMAIN=$3
++USERNAME1=$4
++UPN_NAME1=$5
++USERNAME2=$6
++UPN_NAME2=$7
+ shift 6
+ 
+ failed=0
+@@ -31,9 +32,9 @@ test_user_info()
+ {
+ 	local cmd out ret user domain upn userinfo
+ 
+-	domain="$1"
+-	user="$2"
+-	upn="$3"
++	local domain="$1"
++	local user="$2"
++	local upn="$3"
+ 
+ 	if [ $# -lt 3 ]; then
+ 		userinfo="$domain/$user"
+@@ -62,6 +63,39 @@ test_user_info()
+ 	return 0
+ }
+ 
++test_getpwnam()
++{
++	local cmd out ret
++
++	local lookup_username=$1
++	local expected_return=$2
++	local expected_output=$3
++
++	cmd='getent passwd $lookup_username'
++	eval echo "$cmd"
++	out=$(eval $cmd)
++	ret=$?
++
++	if [ $ret -ne $expected_return ]; then
++		echo "return code: $ret, expected return code is: $expected_return"
++		echo "$out"
++		return 1
++	fi
++
++	if [ -n "$expected_output" ]; then
++		echo "$out" | grep "$expected_output"
++		ret=$?
++
++		if [ $ret -ne 0 ]; then
++			echo "Unable to find $expected_output in:"
++			echo "$out"
++			return 1
++		fi
++	fi
++
++	return 0
++}
++
+ testit "name_to_sid.domain.$USERNAME1" $wbinfo_tool --name-to-sid $DOMAIN/$USERNAME1 || failed=$(expr $failed + 1)
+ testit "name_to_sid.upn.$UPN_NAME1" $wbinfo_tool --name-to-sid $UPN1 || failed=$(expr $failed + 1)
+ 
+@@ -80,4 +114,23 @@ UPN3="$UPN_NAME3@${REALM}.upn"
+ testit "name_to_sid.upn.$UPN_NAME3" $wbinfo_tool --name-to-sid $UPN3 || failed=$(expr $failed + 1)
+ testit "user_info.upn.$UPN_NAME3" test_user_info $DOMAIN $USERNAME3 $UPN3 || failed=$(expr $failed + 1)
+ 
++testit "getpwnam.domain.$DOMAIN.$USERNAME1" test_getpwnam "$DOMAIN/$USERNAME1" 0 "$DOMAIN/$USERNAME1" || failed=$(expr $failed + 1)
++
++testit "getpwnam.upn.$UPN_NAME1" test_getpwnam "$UPN1" 0 "$DOMAIN/$USERNAME1" || failed=$(expr $failed + 1)
++
++# We should not be able to lookup the user just by the name
++test_ret=0
++test_output="$DOMAIN/$USERNAME1"
++
++if [ "$ENVNAME" = "ad_member" ]; then
++	test_ret=2
++	test_output=""
++fi
++if [ "$ENVNAME" = "fl2008r2dc" ]; then
++	test_ret=0
++	test_output="$OWN_DOMAIN/$USERNAME1"
++fi
++
++testit "getpwnam.local.$USERNAME1" test_getpwnam "$USERNAME1" $test_ret $test_output || failed=$(expr $failed + 1)
++
+ exit $failed
+diff --git a/selftest/knownfail.d/upn_handling b/selftest/knownfail.d/upn_handling
+index bcbedb4f903..7dc9b71dc5e 100644
+--- a/selftest/knownfail.d/upn_handling
++++ b/selftest/knownfail.d/upn_handling
+@@ -1,8 +1,10 @@
+ ^samba3\.wbinfo_user_info\.name_to_sid\.upn\.testdenied_upn.ad_member
+ ^samba3\.wbinfo_user_info\.user_info\.upn\.testdenied_upn.ad_member
++^samba3\.wbinfo_user_info\.getpwnam\.local\.alice.ad_member
+ ^samba3\.wbinfo_user_info\.user_info\.domain\.alice.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.user_info\.upn\.alice.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.user_info\.domain\.jane.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.user_info\.upn\.jane\.doe.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.name_to_sid\.upn\.testdenied_upn.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.user_info\.upn\.testdenied_upn.fl2008r2dc
++^samba3\.wbinfo_user_info\.getpwnam\.local\.alice.fl2008r2dc
+diff --git a/source3/selftest/tests.py b/source3/selftest/tests.py
+index f43d2b14d3a..a9cb2dad792 100755
+--- a/source3/selftest/tests.py
++++ b/source3/selftest/tests.py
+@@ -216,13 +216,13 @@ env = "ad_member:local"
+ plantestsuite("samba3.wbinfo_user_info", env,
+               [ os.path.join(srcdir(),
+                             "nsswitch/tests/test_wbinfo_user_info.sh"),
+-                '$DOMAIN', '$REALM', 'alice', 'alice', 'jane', 'jane.doe' ])
++                '$DOMAIN', '$REALM', '$DOMAIN', 'alice', 'alice', 'jane', 'jane.doe' ])
+ 
+ env = "fl2008r2dc:local"
+ plantestsuite("samba3.wbinfo_user_info", env,
+               [ os.path.join(srcdir(),
+                             "nsswitch/tests/test_wbinfo_user_info.sh"),
+-                '$TRUST_DOMAIN', '$TRUST_REALM', 'alice', 'alice', 'jane', 'jane.doe' ])
++                '$TRUST_DOMAIN', '$TRUST_REALM', '$DOMAIN', 'alice', 'alice', 'jane', 'jane.doe' ])
+ 
+ env = "ad_member"
+ t = "WBCLIENT-MULTI-PING"
+-- 
+2.13.6
+
+
+From 495f43f5fa972076de996f9c639657672e378c7d Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Mon, 2 Jul 2018 16:38:01 +0200
+Subject: [PATCH 2/2] s3:winbind: Do not lookup local system accounts in AD
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13503
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Ralph Boehme <slow@samba.org>
+
+Autobuild-User(master): Ralph Böhme <slow@samba.org>
+Autobuild-Date(master): Wed Jul  4 23:55:56 CEST 2018 on sn-devel-144
+
+(cherry picked from commit 9f28d30633af721efec02d8816a9fa48f795a01c)
+---
+ selftest/knownfail.d/upn_handling | 2 --
+ source3/winbindd/winbindd_util.c  | 2 ++
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/selftest/knownfail.d/upn_handling b/selftest/knownfail.d/upn_handling
+index 7dc9b71dc5e..bcbedb4f903 100644
+--- a/selftest/knownfail.d/upn_handling
++++ b/selftest/knownfail.d/upn_handling
+@@ -1,10 +1,8 @@
+ ^samba3\.wbinfo_user_info\.name_to_sid\.upn\.testdenied_upn.ad_member
+ ^samba3\.wbinfo_user_info\.user_info\.upn\.testdenied_upn.ad_member
+-^samba3\.wbinfo_user_info\.getpwnam\.local\.alice.ad_member
+ ^samba3\.wbinfo_user_info\.user_info\.domain\.alice.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.user_info\.upn\.alice.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.user_info\.domain\.jane.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.user_info\.upn\.jane\.doe.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.name_to_sid\.upn\.testdenied_upn.fl2008r2dc
+ ^samba3\.wbinfo_user_info\.user_info\.upn\.testdenied_upn.fl2008r2dc
+-^samba3\.wbinfo_user_info\.getpwnam\.local\.alice.fl2008r2dc
+diff --git a/source3/winbindd/winbindd_util.c b/source3/winbindd/winbindd_util.c
+index aa633419c9a..7a5fb73cdef 100644
+--- a/source3/winbindd/winbindd_util.c
++++ b/source3/winbindd/winbindd_util.c
+@@ -1605,6 +1605,8 @@ bool parse_domain_user(const char *domuser,
+ 		} else if (assume_domain(lp_workgroup())) {
+ 			fstrcpy(domain, lp_workgroup());
+ 			fstrcpy(namespace, domain);
++		} else {
++			fstrcpy(namespace, lp_netbios_name());
+ 		}
+ 	}
+ 
+-- 
+2.13.6
+

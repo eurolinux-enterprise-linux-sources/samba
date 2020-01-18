@@ -36,6 +36,9 @@ struct auth_session_info;
 #include "../auth/ntlmssp/ntlmssp_ndr.h"
 #include "../nsswitch/libwbclient/wbclient.h"
 
+#undef DBGC_CLASS
+#define DBGC_CLASS DBGC_AUTH
+
 /*********************************************************************
  Client side NTLMSSP
 *********************************************************************/
@@ -862,13 +865,23 @@ NTSTATUS gensec_ntlmssp_client_start(struct gensec_security *gensec_security)
 			 * is requested.
 			 */
 			ntlmssp_state->force_wrap_seal = true;
-			/*
-			 * We want also work against old Samba servers
-			 * which didn't had GENSEC_FEATURE_LDAP_STYLE
-			 * we negotiate SEAL too. We may remove this
-			 * in a few years. As all servers should have
-			 * GENSEC_FEATURE_LDAP_STYLE by then.
-			 */
+		}
+	}
+	if (ntlmssp_state->force_wrap_seal) {
+		bool ret;
+
+		/*
+		 * We want also work against old Samba servers
+		 * which didn't had GENSEC_FEATURE_LDAP_STYLE
+		 * we negotiate SEAL too. We may remove this
+		 * in a few years. As all servers should have
+		 * GENSEC_FEATURE_LDAP_STYLE by then.
+		 */
+		ret = gensec_setting_bool(gensec_security->settings,
+					  "ntlmssp_client",
+					  "ldap_style_send_seal",
+					  true);
+		if (ret) {
 			ntlmssp_state->required_flags |= NTLMSSP_NEGOTIATE_SEAL;
 		}
 	}

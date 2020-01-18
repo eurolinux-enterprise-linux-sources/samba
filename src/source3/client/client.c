@@ -3523,7 +3523,7 @@ static int cmd_readlink(void)
 static int cmd_symlink(void)
 {
 	TALLOC_CTX *ctx = talloc_tos();
-	char *oldname = NULL;
+	char *link_target = NULL;
 	char *newname = NULL;
 	char *buf = NULL;
 	char *buf2 = NULL;
@@ -3532,11 +3532,11 @@ static int cmd_symlink(void)
 
 	if (!next_token_talloc(ctx, &cmd_ptr,&buf,NULL) ||
 	    !next_token_talloc(ctx, &cmd_ptr,&buf2,NULL)) {
-		d_printf("symlink <oldname> <newname>\n");
+		d_printf("symlink <link_target> <newname>\n");
 		return 1;
 	}
 	/* Oldname (link target) must be an untouched blob. */
-	oldname = buf;
+	link_target = buf;
 
 	if (SERVER_HAS_UNIX_CIFS(cli)) {
 		newname = talloc_asprintf(ctx, "%s%s", client_get_cur_dir(),
@@ -3553,19 +3553,20 @@ static int cmd_symlink(void)
 				popt_get_cmdline_auth_info(), cli, newname,
 				&newcli, &newname);
 		if (!NT_STATUS_IS_OK(status)) {
-			d_printf("link %s: %s\n", oldname, nt_errstr(status));
+			d_printf("link %s: %s\n", newname,
+				nt_errstr(status));
 			return 1;
 		}
-		status = cli_posix_symlink(newcli, oldname, newname);
+		status = cli_posix_symlink(newcli, link_target, newname);
 	} else {
 		status = cli_symlink(
-			cli, oldname, buf2,
+			cli, link_target, buf2,
 			buf2[0] == '\\' ? 0 : SYMLINK_FLAG_RELATIVE);
 	}
 
 	if (!NT_STATUS_IS_OK(status)) {
 		d_printf("%s symlinking files (%s -> %s)\n",
-			 nt_errstr(status), oldname, newname);
+			 nt_errstr(status), newname, link_target);
 		return 1;
 	}
 
@@ -4560,12 +4561,17 @@ static int cmd_notify(void)
 	}
 
 	while (1) {
-		uint32_t i, num_changes;
-		struct notify_change *changes;
+		uint32_t i;
+		uint32_t num_changes = 0;
+		struct notify_change *changes = NULL;
 
 		status = cli_notify(cli, fnum, 1000, FILE_NOTIFY_CHANGE_ALL,
 				    true,
 				    talloc_tos(), &num_changes, &changes);
+		if (NT_STATUS_EQUAL(status, STATUS_NOTIFY_ENUM_DIR)) {
+			printf("NOTIFY_ENUM_DIR\n");
+			status = NT_STATUS_OK;
+		}
 		if (!NT_STATUS_IS_OK(status)) {
 			d_printf("notify returned %s\n",
 				 nt_errstr(status));
@@ -5146,6 +5152,131 @@ static int cmd_show_connect( void )
 }
 
 /**
+ * set_remote_times - set times of a remote file
+ * @filename: path to the file name
+ * @create_time: New create time
+ * @access_time: New access time
+ * @write_time: New write time
+ * @change_time: New metadata change time
+ *
+ * Update the file times with the ones provided.
+ */
+static int set_remote_times(const char *filename, time_t create_time,
+			time_t access_time, time_t write_time,
+			time_t change_time)
+{
+	extern struct cli_state *cli;
+	NTSTATUS status;
+
+	status = cli_setpathinfo_basic(cli, filename, create_time,
+					access_time, write_time,
+					change_time, -1);
+	if (!NT_STATUS_IS_OK(status)) {
+		d_printf("cli_setpathinfo_basic failed: %s\n",
+			 nt_errstr(status));
+		return 1;
+	}
+
+	return 0;
+}
+
+/**
+ * cmd_utimes - interactive command to set the four times
+ *
+ * Read a filename and four times from the client command line and update
+ * the file times. A value of -1 for a time means don't change.
+ */
+static int cmd_utimes(void)
+{
+	const extern char *cmd_ptr;
+	char *buf;
+	char *fname = NULL;
+	time_t times[4] = {0, 0, 0, 0};
+	int time_count = 0;
+	int err = 0;
+	bool ok;
+	TALLOC_CTX *ctx = talloc_new(NULL);
+	if (ctx == NULL) {
+		return 1;
+	}
+
+	ok = next_token_talloc(ctx, &cmd_ptr, &buf, NULL);
+	if (!ok) {
+		d_printf("utimes <filename> <create-time> <access-time> "
+			 "<write-time> <change-time>\n");
+		d_printf("Dates should be in YY:MM:DD-HH:MM:SS format "
+			"or -1 for no change\n");
+		err = 1;
+		goto out;
+	}
+
+	fname = talloc_asprintf(ctx,
+				"%s%s",
+				client_get_cur_dir(),
+				buf);
+	if (fname == NULL) {
+		err = 1;
+		goto out;
+	}
+	fname = client_clean_name(ctx, fname);
+	if (fname == NULL) {
+		err = 1;
+		goto out;
+	}
+
+	while (next_token_talloc(ctx, &cmd_ptr, &buf, NULL) &&
+		time_count < 4) {
+		const char *s = buf;
+		struct tm tm = {0,};
+		char *ret;
+
+		if (strlen(s) == 2 && strcmp(s, "-1") == 0) {
+			times[time_count] = 0;
+			time_count++;
+			continue;
+		} else {
+			ret = strptime(s, "%y:%m:%d-%H:%M:%S", &tm);
+		}
+
+		/* We could not match all the chars, so print error */
+		if (ret == NULL || *ret != 0) {
+			d_printf("Invalid date format: %s\n", s);
+			d_printf("utimes <filename> <create-time> "
+				"<access-time> <write-time> <change-time>\n");
+			d_printf("Dates should be in YY:MM:DD-HH:MM:SS format "
+				"or -1 for no change\n");
+			err = 1;
+			goto out;
+		}
+
+		/* Convert tm to a time_t */
+		times[time_count] = mktime(&tm);
+		time_count++;
+	}
+
+	if (time_count < 4) {
+		d_printf("Insufficient dates: %d\n", time_count);
+		d_printf("utimes <filename> <create-time> <access-time> "
+			"<write-time> <change-time>\n");
+		d_printf("Dates should be in YY:MM:DD-HH:MM:SS format "
+			"or -1 for no change\n");
+		err = 1;
+		goto out;
+	}
+
+	DEBUG(10, ("times\nCreate: %sAccess: %s Write: %sChange: %s\n",
+		talloc_strdup(ctx, ctime(&times[0])),
+		talloc_strdup(ctx, ctime(&times[1])),
+		talloc_strdup(ctx, ctime(&times[2])),
+		talloc_strdup(ctx, ctime(&times[3]))));
+
+	set_remote_times(fname, times[0], times[1], times[2], times[3]);
+out:
+	talloc_free(ctx);
+	return err;
+}
+
+/**
  * set_remote_attr - set DOS attributes of a remote file
  * @filename: path to the file name
  * @new_attr: attribute bit mask to use
@@ -5464,6 +5595,8 @@ static struct {
   {"tcon",cmd_tcon,"connect to a share" ,{COMPL_NONE,COMPL_NONE}},
   {"tdis",cmd_tdis,"disconnect from a share",{COMPL_NONE,COMPL_NONE}},
   {"tid",cmd_tid,"show or set the current tid (tree-id)",{COMPL_NONE,COMPL_NONE}},
+  {"utimes", cmd_utimes,"<file name> <create_time> <access_time> <mod_time> "
+	"<ctime> set times", {COMPL_REMOTE,COMPL_NONE}},
   {"logoff",cmd_logoff,"log off (close the session)",{COMPL_NONE,COMPL_NONE}},
   {"..",cmd_cd_oneup,"change the remote directory (up one level)",{COMPL_REMOTE,COMPL_NONE}},
 
@@ -5900,7 +6033,13 @@ static void readline_callback(void)
 	/* Ping the server to keep the connection alive using SMBecho. */
 	memset(garbage, 0xf0, sizeof(garbage));
 	status = cli_echo(cli, 1, data_blob_const(garbage, sizeof(garbage)));
-	if (NT_STATUS_IS_OK(status)) {
+	if (NT_STATUS_IS_OK(status) ||
+			NT_STATUS_EQUAL(status, NT_STATUS_INVALID_PARAMETER)) {
+		/*
+		 * Even if server returns NT_STATUS_INVALID_PARAMETER
+		 * it still responded.
+		 * BUG: https://bugzilla.samba.org/show_bug.cgi?id=13007
+		 */
 		return;
 	}
 
