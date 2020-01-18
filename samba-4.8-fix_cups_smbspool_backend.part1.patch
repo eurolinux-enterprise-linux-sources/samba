@@ -1,0 +1,33 @@
+From 56fb8aec557bb5b7264df2713b85b282e1c81f84 Mon Sep 17 00:00:00 2001
+From: Andreas Schneider <asn@samba.org>
+Date: Thu, 9 May 2019 16:18:51 +0200
+Subject: [PATCH] s3:smbspool: Fix regression printing with Kerberos
+ credentials
+
+This is a regression which has been introduced with Samba 4.8.
+
+BUG: https://bugzilla.samba.org/show_bug.cgi?id=13939
+
+Signed-off-by: Andreas Schneider <asn@samba.org>
+Reviewed-by: Guenther Deschner <gd@samba.org>
+(cherry picked from commit fd4b1f4f16aee3e3c9a2cb449655edfed171963a)
+---
+ source3/client/smbspool.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source3/client/smbspool.c b/source3/client/smbspool.c
+index 8be1009c0a8..ecaaf3c3f22 100644
+--- a/source3/client/smbspool.c
++++ b/source3/client/smbspool.c
+@@ -660,7 +660,7 @@ smb_connect(const char *workgroup,	/* I - Workgroup */
+ 	 * behavior with 3.0.14a
+ 	 */
+ 
+-	if (username != NULL && username[0] != '\0') {
++	if (username == NULL || username[0] == '\0') {
+ 		if (kerberos_ccache_is_valid()) {
+ 			goto kerberos_auth;
+ 		}
+-- 
+2.21.0
+

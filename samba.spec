@@ -6,7 +6,7 @@
 # ctdb is enabled by default, you can disable it with: --without clustering
 %bcond_without clustering
 
-%define main_release 4
+%define main_release 6
 
 %define samba_version 4.8.3
 %define talloc_version 2.1.11
@@ -132,6 +132,9 @@ Patch1:        samba-4.8.3-fix_winbind_getpwnam_local_user.patch
 Patch2:        samba-4.8.3-smbclient_quiet_argument.patch
 Patch3:        CVE-2018-1139.patch
 Patch4:        CVE-2018-10858.patch
+Patch5:        samba-4.8-fix_smbspool_as_cups_backend.patch
+Patch6:        samba-4.8-fix_cups_smbspool_backend.part1.patch
+Patch7:        samba-4.8-fix_cups_smbspool_backend.part2.patch
 
 Requires(pre): /usr/sbin/groupadd
 Requires(post): systemd
@@ -3121,6 +3124,12 @@ rm -rf %{buildroot}
 %endif # with_clustering_support
 
 %changelog
+* Tue May 28 2019 Andreas Schneider <asn@redhat.com> - 4.8.3-6
+- resolves: #1713637 - Fix smbspool with krb5 as CUPS backend
+
+* Wed Mar 20 2019 Andreas Schneider <asn@redhat.com> - 4.8.3-5
+- resolves: #1690517 - Fix smbspool as CUPS backend
+
 * Thu Aug 09 2018 Andreas Schneider <asn@redhat.com> - 4.8.3-4
 - resolves: #1614132 - Fix delete-on-close after smb2_find
 - resolves: #1614265 - Fix CVE-2018-1139
