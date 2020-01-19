@@ -6,7 +6,7 @@
 # ctdb is enabled by default, you can disable it with: --without clustering
 %bcond_without clustering
 
-%define main_release 10
+%define main_release 6
 
 %define samba_version 4.9.1
 %define talloc_version 2.1.14
@@ -145,11 +145,6 @@ Patch14:        samba-4.9-fix_net_ads_join_admin_otherdomain.patch
 Patch15:        samba-4.9-CVE-2019-3880.patch
 Patch16:        samba-4.9-fix_smbspool_krb5_auth.patch
 Patch17:        samba-4.9-fix_cups_printing.patch
-Patch18:        samba-4.9-net_ads_join_createcomputer.patch
-Patch19:        samba-4.10-fix_smbspool_username_passwd.patch
-Patch20:        samba-4.9-fix_builtin_groups_creation.patch
-Patch21:        samba-4.10-fix_winbind_trustdom_enum.patch
-Patch22:        samba-4.10-fix_spnego_downgrade.patch
 
 Requires(pre): /usr/sbin/groupadd
 Requires(post): systemd
@@ -3246,21 +3241,6 @@ rm -rf %{buildroot}
 %endif # with_clustering_support
 
 %changelog
-* Mon Oct 21 2019 Isaac Boukris <iboukris@redhat.com> - 4.9.1.10
-- resolves: #1763650 - Fix spnego downgrade
-
-* Tue Oct 08 2019 Andreas Schneider <asn@redhat.com> - 4.9.1-9
-- resolves: #1759445 - Fix trusted domain enumeration in windind caused
-                       a Active Directory update
-
-* Tue Sep 24 2019 Andreas Schneider <asn@redhat.com> - 4.9.1-8
-- resolves: #1754838 - Fix username/password auth with smbspool
-- resolves: #1754835 - Fix builtin groups creation.
-
-
-* Fri Sep 06 2019 Guenther Deschner <gdeschner@redhat.com> - 4.9.1-7
-- resolves: #1749300 - Fix 'net ads join createcomputer=<accountou>'
-
 * Fri May 24 2019 Andreas Schneider <asn@redhat.com> - 4.9.1-6
 - related: #1703204 - Fix printing with smbspool as CUPS backend
 
